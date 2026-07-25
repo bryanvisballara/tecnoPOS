@@ -360,6 +360,49 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
   .phone-row { grid-template-columns: 1fr; }
 }
 
+.search-select {
+  position: relative;
+}
+.search-select-input {
+  width: 100%;
+}
+.search-select-menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 220px;
+  overflow: auto;
+  background: #0d1420;
+  border: 1px solid rgba(0, 168, 255, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  padding: 0.35rem;
+}
+.search-select-option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+.search-select-option:hover,
+.search-select-option.active {
+  background: rgba(0, 168, 255, 0.14);
+  color: var(--blue-2);
+  transform: none;
+}
+.search-select-empty {
+  padding: 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 
 .floor {
   position: relative;

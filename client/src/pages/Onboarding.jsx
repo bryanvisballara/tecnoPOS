@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import SearchableSelect from '../components/SearchableSelect';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
 const STAFF_ROLES = [
@@ -52,6 +53,10 @@ export default function Onboarding() {
     const currentIdx = status.steps.findIndex((x) => x.id === stepId);
     return idx === currentIdx + 1;
   });
+  const ingredientOptions = useMemo(
+    () => ingredients.map((i) => ({ value: i._id, label: `${i.name} (${i.unit})` })),
+    [ingredients]
+  );
 
   const afterMutation = async () => {
     await reload();
@@ -408,15 +413,22 @@ export default function Onboarding() {
                 <div className="muted">Primero agrega al menos un insumo en el paso anterior.</div>
               ) : (
                 <>
-                  <label>Insumo
-                    <select value={stockForm.ingredientId} onChange={(e) => setStockForm({ ...stockForm, ingredientId: e.target.value })} required>
-                      {ingredients.map((i) => <option key={i._id} value={i._id}>{i.name} ({i.unit})</option>)}
-                    </select>
+                  <label>
+                    Insumo
+                    <SearchableSelect
+                      options={ingredientOptions}
+                      value={stockForm.ingredientId}
+                      onChange={(id) => setStockForm({ ...stockForm, ingredientId: id })}
+                      placeholder="Escribe para buscar un insumo…"
+                      emptyText="No hay insumos con ese nombre"
+                      required
+                      disabled={busy}
+                    />
                   </label>
                   <label>Cantidad inicial
                     <input type="number" min="0" step="0.01" value={stockForm.quantity} onChange={(e) => setStockForm({ ...stockForm, quantity: e.target.value })} required />
                   </label>
-                  <button disabled={busy}>{busy ? 'Guardando…' : 'Cargar stock'}</button>
+                  <button disabled={busy || !stockForm.ingredientId}>{busy ? 'Guardando…' : 'Cargar stock'}</button>
                 </>
               )}
             </form>
