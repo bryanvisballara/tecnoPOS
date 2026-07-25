@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -8,6 +7,7 @@ import mongoose from 'mongoose';
 import http from 'http';
 import { Server } from 'socket.io';
 
+import { loadEnv } from './utils/loadEnv.js';
 import authRoutes from './routes/auth.js';
 import restaurantRoutes from './routes/restaurants.js';
 import userRoutes from './routes/users.js';
@@ -22,7 +22,7 @@ import dashboardRoutes from './routes/dashboard.js';
 import { seedDatabase } from './seed/seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+loadEnv(__dirname);
 
 const app = express();
 const server = http.createServer(app);

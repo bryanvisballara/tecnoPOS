@@ -3,7 +3,7 @@ services:
     name: tecnopos
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: bash bin/render-build.sh
     startCommand: node server/src/index.js
     envVars:
       - key: NODE_ENV
