@@ -58,9 +58,23 @@ router.post('/login', async (req, res) => {
 /** Paso 1 registro: valida datos y envía código de 6 dígitos */
 router.post('/register/request', async (req, res) => {
   try {
-    const { name, email, password, organizationName, restaurantName, city } = req.body;
+    const {
+      name,
+      email,
+      password,
+      organizationName,
+      restaurantName,
+      city,
+      phone,
+      phoneCountry,
+      phoneDial,
+      phoneE164,
+    } = req.body;
     if (!name || !email || !password || !organizationName) {
       return res.status(400).json({ error: 'Completa nombre, email, contraseña y nombre de la cadena' });
+    }
+    if (!phone || String(phone).replace(/\D/g, '').length < 6) {
+      return res.status(400).json({ error: 'Ingresa un número de teléfono válido' });
     }
     if (String(password).length < 6) {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
@@ -80,6 +94,10 @@ router.post('/register/request', async (req, res) => {
         organizationName: organizationName.trim(),
         restaurantName: (restaurantName || '').trim(),
         city: (city || '').trim(),
+        phone: String(phone).replace(/\D/g, ''),
+        phoneCountry: phoneCountry || 'CO',
+        phoneDial: phoneDial || '+57',
+        phoneE164: phoneE164 || `${phoneDial || '+57'}${String(phone).replace(/\D/g, '')}`,
       },
     });
 
@@ -132,6 +150,9 @@ router.post('/register/verify', async (req, res) => {
       restaurantIds: [restaurant._id],
       name: data.name,
       email: data.email,
+      phone: data.phoneE164 || data.phone || '',
+      phoneCountry: data.phoneCountry || 'CO',
+      phoneDial: data.phoneDial || '+57',
       password: data.password,
       role: 'owner',
     });

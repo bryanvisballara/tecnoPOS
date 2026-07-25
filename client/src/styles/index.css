@@ -239,6 +239,46 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
   padding-left: 0.9rem !important;
 }
 
+.phone-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) 1.2fr;
+  gap: 0.55rem;
+}
+.phone-country {
+  font-size: 0.85rem;
+  padding: 0.7rem 0.55rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(4, 8, 14, 0.72);
+  backdrop-filter: blur(8px);
+  animation: rise 0.25s ease both;
+}
+.modal-card {
+  width: min(420px, 100%);
+  padding: 1.35rem 1.25rem 1.25rem;
+  text-align: left;
+}
+.modal-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  text-align: center;
+}
+.modal-card .muted {
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+@media (max-width: 560px) {
+  .phone-row { grid-template-columns: 1fr; }
+}
+
+
 .floor {
   position: relative;
   min-height: 560px;
