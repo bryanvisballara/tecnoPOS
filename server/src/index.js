@@ -60,9 +60,11 @@ app.use(
   express.static(clientDist, {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
       } else if (/\.(js|css)$/.test(filePath)) {
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        // Hashed assets: short cache so stale SPA shells recover faster after deploys
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
       }
     },
   })
@@ -71,7 +73,8 @@ app.get(/^(?!\/api).*/, (_req, res) => {
   if (!fs.existsSync(indexHtml)) {
     return res.status(503).send('Frontend no compilado. Revisa el Build Command / postinstall.');
   }
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   res.sendFile(indexHtml);
 });
 
