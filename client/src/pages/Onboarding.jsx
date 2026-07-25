@@ -581,6 +581,7 @@ export default function Onboarding() {
               )}
               <div>
                 <h3 style={{ margin: '0.5rem 0' }}>Stock cargado ({stockRows.length})</h3>
+                <p className="muted" style={{ marginTop: 0 }}>Cantidad × costo unitario del insumo = costo total en inventario.</p>
                 {!stockRows.length ? <p className="muted">Aún no has cargado inventario.</p> : (
                   <table className="table">
                     <thead>
@@ -588,7 +589,7 @@ export default function Onboarding() {
                         <th>Insumo</th>
                         <th>On hand</th>
                         <th>Unidad</th>
-                        <th>Costo unit.</th>
+                        <th>Costo unitario</th>
                         <th>Costo total</th>
                         <th></th>
                       </tr>
