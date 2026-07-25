@@ -4,6 +4,7 @@ import MenuItem from '../models/MenuItem.js';
 import Recipe from '../models/Recipe.js';
 import Ingredient from '../models/Ingredient.js';
 import { auth, requireRoles } from '../middleware/auth.js';
+import { recipeLineCost } from '../utils/units.js';
 
 const router = Router();
 router.use(auth);
@@ -22,7 +23,13 @@ router.get('/items', async (req, res) => {
   const filter = { organizationId: req.user.organizationId };
   if (req.query.categoryId) filter.categoryId = req.query.categoryId;
   if (req.query.available === 'true') filter.available = true;
-  const items = await MenuItem.find(filter).populate('categoryId', 'name color').sort({ name: 1 });
+  const items = await MenuItem.find(filter)
+    .populate('categoryId', 'name color')
+    .populate({
+      path: 'recipeId',
+      populate: { path: 'lines.ingredientId', select: 'name unit costPerUnit' },
+    })
+    .sort({ name: 1 });
   res.json(items);
 });
 
@@ -59,11 +66,18 @@ router.get('/recipes/:id/cost', async (req, res) => {
   let cost = 0;
   const breakdown = recipe.lines.map((line) => {
     const ing = line.ingredientId;
-    const lineCost = (ing?.costPerUnit || 0) * line.quantity;
+    const lineCost = recipeLineCost(line.quantity, line.unit || ing?.unit, ing);
     cost += lineCost;
     return { ingredient: ing?.name, quantity: line.quantity, unit: line.unit || ing?.unit, cost: lineCost };
   });
-  res.json({ recipeId: recipe._id, name: recipe.name, portions: recipe.portions, cost, costPerPortion: cost / (recipe.portions || 1), breakdown });
+  res.json({
+    recipeId: recipe._id,
+    name: recipe.name,
+    portions: recipe.portions,
+    cost,
+    costPerPortion: cost / (recipe.portions || 1),
+    breakdown,
+  });
 });
 
 router.get('/ingredients', async (req, res) => {

@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
+import { compatibleUnits, recipeLineCost } from '../utils/units';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
 const STAFF_ROLES = [
@@ -43,6 +44,8 @@ export default function Onboarding() {
   const [ingredientForm, setIngredientForm] = useState({ name: '', unit: 'kg', costPerUnit: '' });
   const [stockForm, setStockForm] = useState({ ingredientId: '', quantity: '10' });
   const [menuForm, setMenuForm] = useState({ name: '', price: '', categoryName: 'Platos fuertes' });
+  const [recipeLines, setRecipeLines] = useState([]);
+  const [recipeDraft, setRecipeDraft] = useState({ ingredientId: '', quantity: '', unit: 'kg' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'waiter' });
   const [restoForm, setRestoForm] = useState({ name: '', city: '', address: '' });
@@ -63,6 +66,11 @@ export default function Onboarding() {
     setTables(tableList);
     setStaff(users.filter((u) => u.role !== 'owner'));
     setStockForm((f) => ({ ...f, ingredientId: f.ingredientId || ings[0]?._id || '' }));
+    setRecipeDraft((d) => ({
+      ...d,
+      ingredientId: d.ingredientId || ings[0]?._id || '',
+      unit: d.ingredientId ? d.unit : (ings[0]?.unit || 'kg'),
+    }));
   }, [restaurantId]);
 
   useEffect(() => {
@@ -91,6 +99,27 @@ export default function Onboarding() {
     () => ingredients.filter((i) => !stockedIngredientIds.has(String(i._id))),
     [ingredients, stockedIngredientIds]
   );
+  const ingredientsById = useMemo(
+    () => Object.fromEntries(ingredients.map((i) => [String(i._id), i])),
+    [ingredients]
+  );
+  const recipeDraftIng = ingredientsById[String(recipeDraft.ingredientId)];
+  const recipeDraftUnits = compatibleUnits(recipeDraftIng?.unit || recipeDraft.unit);
+  const recipePreview = useMemo(() => {
+    const breakdown = recipeLines.map((line) => {
+      const ing = ingredientsById[String(line.ingredientId)];
+      const cost = recipeLineCost(line.quantity, line.unit, ing);
+      return {
+        ...line,
+        name: ing?.name || 'Insumo',
+        cost,
+      };
+    });
+    const totalCost = breakdown.reduce((s, l) => s + l.cost, 0);
+    const price = Number(menuForm.price) || 0;
+    return { breakdown, totalCost, margin: price - totalCost };
+  }, [recipeLines, ingredientsById, menuForm.price]);
+
 
   const afterMutation = async (refreshSession = false) => {
     await reload();
@@ -235,6 +264,10 @@ export default function Onboarding() {
 
   const submitMenu = async (e) => {
     e.preventDefault();
+    if (!recipeLines.length) {
+      setError('Agrega al menos un insumo a la receta del plato.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -244,15 +277,44 @@ export default function Onboarding() {
           name: menuForm.name,
           price: Number(menuForm.price),
           categoryName: menuForm.categoryName,
+          lines: recipeLines.map((l) => ({
+            ingredientId: l.ingredientId,
+            quantity: Number(l.quantity),
+            unit: l.unit,
+          })),
         },
       });
       setMenuForm({ name: '', price: '', categoryName: menuForm.categoryName });
+      setRecipeLines([]);
+      setRecipeDraft({ ingredientId: ingredients[0]?._id || '', quantity: '', unit: ingredients[0]?.unit || 'kg' });
       await afterMutation();
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const addRecipeLine = () => {
+    if (!recipeDraft.ingredientId || !(Number(recipeDraft.quantity) > 0)) {
+      setError('Elige un insumo y una cantidad mayor a 0.');
+      return;
+    }
+    setError('');
+    setRecipeLines((rows) => [
+      ...rows,
+      {
+        key: `${Date.now()}-${recipeDraft.ingredientId}`,
+        ingredientId: recipeDraft.ingredientId,
+        quantity: Number(recipeDraft.quantity),
+        unit: recipeDraft.unit,
+      },
+    ]);
+    setRecipeDraft((d) => ({ ...d, quantity: '' }));
+  };
+
+  const removeRecipeLine = (key) => {
+    setRecipeLines((rows) => rows.filter((r) => r.key !== key));
   };
 
   const saveMenu = async (id) => {
@@ -686,45 +748,168 @@ export default function Onboarding() {
 
           {stepId === 'menu' && (
             <div className="stack">
-              <form className="stack" onSubmit={submitMenu}>
-                <label>Nombre del plato<input value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} required placeholder="Ej. Hamburguesa clásica" /></label>
-                <label>Precio de venta (COP)<input type="number" min="0" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} required placeholder="28000" /></label>
-                <label>Categoría<input value={menuForm.categoryName} onChange={(e) => setMenuForm({ ...menuForm, categoryName: e.target.value })} placeholder="Platos fuertes" /></label>
-                <button disabled={busy}>{busy ? 'Guardando…' : 'Agregar plato'}</button>
-              </form>
+              {!ingredients.length ? (
+                <div className="muted">Primero agrega insumos en el paso 1 para armar la receta del plato.</div>
+              ) : (
+                <form
+                  className="stack"
+                  onSubmit={submitMenu}
+                >
+                  <label>Nombre del plato<input value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} required placeholder="Ej. Shawarma de pollo" /></label>
+                  <label>Precio de venta (COP)<input type="number" min="0" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} required placeholder="28000" /></label>
+                  <label>Categoría<input value={menuForm.categoryName} onChange={(e) => setMenuForm({ ...menuForm, categoryName: e.target.value })} placeholder="Platos fuertes" /></label>
+
+                  <div className="stack" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
+                    <h3 style={{ margin: 0 }}>Receta del plato</h3>
+                    <p className="muted" style={{ margin: 0 }}>
+                      Agrega cada porción (ej. 150 g de pollo). El costo se calcula con el precio unitario del insumo y, al vender, se descuenta del inventario.
+                    </p>
+                    <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.75rem' }}>
+                      <label style={{ flex: 2, minWidth: 180 }}>
+                        Insumo
+                        <SearchableSelect
+                          options={ingredientOptions}
+                          value={recipeDraft.ingredientId}
+                          onChange={(id) => {
+                            const ing = ingredientsById[String(id)];
+                            setRecipeDraft({
+                              ingredientId: id,
+                              quantity: recipeDraft.quantity,
+                              unit: ing?.unit || 'kg',
+                            });
+                          }}
+                          placeholder="Buscar insumo…"
+                          emptyText="Sin insumos"
+                          disabled={busy}
+                        />
+                      </label>
+                      <label style={{ flex: 1, minWidth: 100 }}>
+                        Cantidad
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={recipeDraft.quantity}
+                          onChange={(e) => setRecipeDraft({ ...recipeDraft, quantity: e.target.value })}
+                          placeholder="150"
+                          disabled={busy}
+                        />
+                      </label>
+                      <label style={{ flex: 1, minWidth: 90 }}>
+                        Unidad
+                        <select
+                          value={recipeDraft.unit}
+                          onChange={(e) => setRecipeDraft({ ...recipeDraft, unit: e.target.value })}
+                          disabled={busy}
+                        >
+                          {recipeDraftUnits.map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button type="button" className="ghost" disabled={busy} onClick={addRecipeLine}>
+                        Agregar a receta
+                      </button>
+                    </div>
+
+                    {!recipePreview.breakdown.length ? (
+                      <p className="muted">Aún no hay insumos en la receta.</p>
+                    ) : (
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Insumo</th>
+                            <th>Cantidad</th>
+                            <th>Costo</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recipePreview.breakdown.map((line) => (
+                            <tr key={line.key}>
+                              <td>{line.name}</td>
+                              <td className="mono">{line.quantity} {line.unit}</td>
+                              <td className="mono">{money(line.cost)}</td>
+                              <td>
+                                <button type="button" className="ghost" disabled={busy} onClick={() => removeRecipeLine(line.key)}>
+                                  Quitar
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td colSpan={2} style={{ textAlign: 'right', fontWeight: 700 }}>Costo total plato</td>
+                            <td className="mono" style={{ fontWeight: 700 }}>{money(recipePreview.totalCost)}</td>
+                            <td></td>
+                          </tr>
+                          {Number(menuForm.price) > 0 && (
+                            <tr>
+                              <td colSpan={2} style={{ textAlign: 'right' }}>Margen estimado</td>
+                              <td className="mono">{money(recipePreview.margin)}</td>
+                              <td></td>
+                            </tr>
+                          )}
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+
+                  <button disabled={busy || !recipeLines.length}>{busy ? 'Guardando…' : 'Agregar plato'}</button>
+                </form>
+              )}
               <div>
                 <h3 style={{ margin: '0.5rem 0' }}>Platos agregados ({visibleMenu.length})</h3>
                 {!visibleMenu.length ? <p className="muted">Aún no has agregado platos.</p> : (
                   <table className="table">
-                    <thead><tr><th>Plato</th><th>Precio</th><th></th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Plato</th>
+                        <th>Precio</th>
+                        <th>Costo</th>
+                        <th>Receta</th>
+                        <th></th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {visibleMenu.map((item) => (
-                        <tr key={item._id}>
-                          {editingMenuId === item._id ? (
-                            <>
-                              <td><input value={menuEditDraft.name} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, name: e.target.value })} /></td>
-                              <td><input type="number" min="0" value={menuEditDraft.price} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, price: e.target.value })} /></td>
-                              <td>
-                                <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                  <button type="button" disabled={busy} onClick={() => saveMenu(item._id)}>Guardar</button>
-                                  <button type="button" className="ghost" disabled={busy} onClick={() => setEditingMenuId(null)}>Cancelar</button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td>{item.name}</td>
-                              <td className="mono">{money(item.price)}</td>
-                              <td>
-                                <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                  <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingMenuId(item._id); setMenuEditDraft({ name: item.name, price: String(item.price ?? '') }); }}>Editar</button>
-                                  <button type="button" className="ghost" disabled={busy} onClick={() => removeMenu(item._id)}>Quitar</button>
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
+                      {visibleMenu.map((item) => {
+                        const lines = item.recipeId?.lines || [];
+                        const recipeLabel = lines.length
+                          ? lines.map((l) => `${l.quantity} ${l.unit || l.ingredientId?.unit || ''} ${l.ingredientId?.name || ''}`.trim()).join(' · ')
+                          : 'Sin receta';
+                        return (
+                          <tr key={item._id}>
+                            {editingMenuId === item._id ? (
+                              <>
+                                <td><input value={menuEditDraft.name} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, name: e.target.value })} /></td>
+                                <td><input type="number" min="0" value={menuEditDraft.price} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, price: e.target.value })} /></td>
+                                <td className="mono">{money(item.cost)}</td>
+                                <td className="muted" style={{ fontSize: '0.85rem' }}>{recipeLabel}</td>
+                                <td>
+                                  <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                    <button type="button" disabled={busy} onClick={() => saveMenu(item._id)}>Guardar</button>
+                                    <button type="button" className="ghost" disabled={busy} onClick={() => setEditingMenuId(null)}>Cancelar</button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td>{item.name}</td>
+                                <td className="mono">{money(item.price)}</td>
+                                <td className="mono">{money(item.cost)}</td>
+                                <td className="muted" style={{ fontSize: '0.85rem', maxWidth: 280 }}>{recipeLabel}</td>
+                                <td>
+                                  <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                    <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingMenuId(item._id); setMenuEditDraft({ name: item.name, price: String(item.price ?? '') }); }}>Editar</button>
+                                    <button type="button" className="ghost" disabled={busy} onClick={() => removeMenu(item._id)}>Quitar</button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

@@ -2,6 +2,8 @@ import Stock from '../models/Stock.js';
 import InventoryTxn from '../models/InventoryTxn.js';
 import Recipe from '../models/Recipe.js';
 import MenuItem from '../models/MenuItem.js';
+import Ingredient from '../models/Ingredient.js';
+import { toIngredientUnitQty } from './units.js';
 
 export function calcOrderTotals(items, taxRate = 0.08, discount = 0) {
   const subtotal = items
@@ -25,7 +27,9 @@ export async function depleteInventoryForOrder(order, userId) {
     if (!recipe) continue;
 
     for (const line of recipe.lines) {
-      const qty = (line.quantity / (recipe.portions || 1)) * item.quantity;
+      const ing = await Ingredient.findById(line.ingredientId);
+      const qtyInStockUnit = toIngredientUnitQty(line.quantity, line.unit || ing?.unit, ing?.unit);
+      const qty = (qtyInStockUnit / (recipe.portions || 1)) * item.quantity;
       const stock = await Stock.findOneAndUpdate(
         { restaurantId: order.restaurantId, ingredientId: line.ingredientId },
         { $inc: { onHand: -qty } },

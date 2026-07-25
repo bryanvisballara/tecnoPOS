@@ -4,10 +4,12 @@ import Restaurant from '../models/Restaurant.js';
 import Ingredient from '../models/Ingredient.js';
 import Stock from '../models/Stock.js';
 import MenuItem from '../models/MenuItem.js';
+import Recipe from '../models/Recipe.js';
 import Category from '../models/Category.js';
 import Table from '../models/Table.js';
 import User from '../models/User.js';
 import { auth, requireRoles, restaurantScope } from '../middleware/auth.js';
+import { recipeLineCost } from '../utils/units.js';
 
 const router = Router();
 router.use(auth);
@@ -61,7 +63,7 @@ router.get('/status', async (req, res) => {
       {
         id: 'menu',
         title: 'Platos del menú',
-        description: 'Crea los productos que venderás en el POS con su precio.',
+        description: 'Crea platos con receta de insumos, costo automático y precio de venta.',
         done: menuCount > 0,
         required: true,
         count: menuCount,
@@ -202,7 +204,15 @@ router.delete('/quick/stock/:id', async (req, res) => {
 });
 
 router.post('/quick/menu-item', async (req, res) => {
-  const { name, price, categoryName = 'Platos fuertes', station = 'hot', description } = req.body;
+  const {
+    name,
+    price,
+    categoryName = 'Platos fuertes',
+    station = 'hot',
+    description,
+    portions = 1,
+    lines = [],
+  } = req.body;
   if (!name || price == null) return res.status(400).json({ error: 'Nombre y precio requeridos' });
 
   let category = await Category.findOne({
@@ -218,16 +228,60 @@ router.post('/quick/menu-item', async (req, res) => {
     });
   }
 
+  const cleanLines = (Array.isArray(lines) ? lines : [])
+    .filter((l) => l?.ingredientId && Number(l.quantity) > 0)
+    .map((l) => ({
+      ingredientId: l.ingredientId,
+      quantity: Number(l.quantity),
+      unit: l.unit || undefined,
+    }));
+
+  let recipeId;
+  let cost = 0;
+  if (cleanLines.length) {
+    const ings = await Ingredient.find({
+      _id: { $in: cleanLines.map((l) => l.ingredientId) },
+      organizationId: req.user.organizationId,
+      active: { $ne: false },
+    });
+    const byId = Object.fromEntries(ings.map((i) => [String(i._id), i]));
+
+    for (const line of cleanLines) {
+      const ing = byId[String(line.ingredientId)];
+      if (!ing) return res.status(400).json({ error: 'Insumo de receta inválido' });
+      if (!line.unit) line.unit = ing.unit;
+      cost += recipeLineCost(line.quantity, line.unit, ing);
+    }
+    cost = cost / (Number(portions) || 1);
+
+    const recipe = await Recipe.create({
+      organizationId: req.user.organizationId,
+      name: name.trim(),
+      portions: Number(portions) || 1,
+      lines: cleanLines,
+    });
+    recipeId = recipe._id;
+  }
+
   const item = await MenuItem.create({
     organizationId: req.user.organizationId,
     categoryId: category._id,
     name: name.trim(),
     description: description || '',
     price: Number(price),
+    cost: Math.round(cost),
     station,
     available: true,
+    recipeId,
   });
-  res.status(201).json(item);
+
+  const populated = await MenuItem.findById(item._id)
+    .populate('categoryId', 'name color')
+    .populate({
+      path: 'recipeId',
+      populate: { path: 'lines.ingredientId', select: 'name unit costPerUnit' },
+    });
+  res.status(201).json(populated);
 });
 
 router.post('/quick/tables', async (req, res) => {
