@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import RequireOnboarding from './components/RequireOnboarding';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -43,7 +44,9 @@ export default function App() {
         path="/"
         element={
           <Private>
-            <Layout />
+            <RequireOnboarding>
+              <Layout />
+            </RequireOnboarding>
           </Private>
         }
       >

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
@@ -20,8 +20,11 @@ export default function Onboarding() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [ingredients, setIngredients] = useState([]);
+  const [stockRows, setStockRows] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', unit: 'kg', costPerUnit: '' });
+  const [editingStockId, setEditingStockId] = useState(null);
+  const [stockEditDraft, setStockEditDraft] = useState({ onHand: '' });
 
   const [ingredientForm, setIngredientForm] = useState({ name: '', unit: 'kg', costPerUnit: '' });
   const [stockForm, setStockForm] = useState({ ingredientId: '', quantity: '10' });
@@ -37,6 +40,12 @@ export default function Onboarding() {
     const ings = await api('/api/menu/ingredients');
     setIngredients(ings);
     setStockForm((f) => ({ ...f, ingredientId: f.ingredientId || ings[0]?._id || '' }));
+    try {
+      const stock = await api(`/api/inventory/stock?restaurantId=${restaurantId}`, { restaurantId });
+      setStockRows(stock);
+    } catch {
+      setStockRows([]);
+    }
   }, [restaurantId]);
 
   useEffect(() => {
@@ -58,10 +67,13 @@ export default function Onboarding() {
     [ingredients]
   );
 
-  const afterMutation = async () => {
+  const afterMutation = async (refreshSession = false) => {
     await reload();
-    const me = await api('/api/auth/me');
-    applySession(me);
+    // Only refresh session when restaurants/staff change — avoids kicking user out of wizard
+    if (refreshSession) {
+      const me = await api('/api/auth/me');
+      applySession(me);
+    }
   };
 
   const goNext = () => {
@@ -113,6 +125,52 @@ export default function Onboarding() {
         body: { active: false },
       });
       if (editingId === id) cancelEditIngredient();
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEditStock = (row) => {
+    setEditingStockId(row._id);
+    setStockEditDraft({ onHand: String(row.onHand ?? 0) });
+  };
+
+  const cancelEditStock = () => {
+    setEditingStockId(null);
+    setStockEditDraft({ onHand: '' });
+  };
+
+  const saveStock = async (id) => {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/onboarding/quick/stock/${id}`, {
+        method: 'PATCH',
+        restaurantId,
+        body: { restaurantId, onHand: Number(stockEditDraft.onHand) || 0 },
+      });
+      cancelEditStock();
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeStock = async (id) => {
+    if (!confirm('¿Quitar este stock de la lista?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/onboarding/quick/stock/${id}`, {
+        method: 'DELETE',
+        restaurantId,
+      });
+      if (editingStockId === id) cancelEditStock();
       await afterMutation();
     } catch (err) {
       setError(err.message);
@@ -247,7 +305,7 @@ export default function Onboarding() {
     try {
       await api('/api/onboarding/quick/restaurant', { method: 'POST', body: restoForm });
       setRestoForm({ name: '', city: '', address: '' });
-      await afterMutation();
+      await afterMutation(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -301,10 +359,7 @@ export default function Onboarding() {
             {status.requiredDone && (
               <button onClick={() => finish(false)} disabled={busy}>Finalizar y ir al panel</button>
             )}
-            <button className="ghost" onClick={() => finish(true)} disabled={busy}>Omitir por ahora</button>
-            <Link className="muted" to="/dashboard" style={{ fontSize: '0.85rem', textAlign: 'center' }}>
-              Ir al dashboard
-            </Link>
+            <button className="ghost" onClick={() => finish(true)} disabled={busy}>Omitir por ahora y salir</button>
           </div>
         </aside>
 
@@ -408,11 +463,11 @@ export default function Onboarding() {
           )}
 
           {stepId === 'inventory' && (
-            <form className="stack" onSubmit={submitStock}>
+            <div className="stack">
               {!ingredients.length ? (
                 <div className="muted">Primero agrega al menos un insumo en el paso anterior.</div>
               ) : (
-                <>
+                <form className="stack" onSubmit={submitStock}>
                   <label>
                     Insumo
                     <SearchableSelect
@@ -429,9 +484,72 @@ export default function Onboarding() {
                     <input type="number" min="0" step="0.01" value={stockForm.quantity} onChange={(e) => setStockForm({ ...stockForm, quantity: e.target.value })} required />
                   </label>
                   <button disabled={busy || !stockForm.ingredientId}>{busy ? 'Guardando…' : 'Cargar stock'}</button>
-                </>
+                </form>
               )}
-            </form>
+
+              <div>
+                <h3 style={{ margin: '0.5rem 0' }}>Stock cargado ({stockRows.length})</h3>
+                {!stockRows.length ? (
+                  <p className="muted">Aún no has cargado inventario. Agrega cantidades arriba.</p>
+                ) : (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Insumo</th>
+                        <th>On hand</th>
+                        <th>Unidad</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockRows.map((row) => (
+                        <tr key={row._id}>
+                          {editingStockId === row._id ? (
+                            <>
+                              <td>{row.ingredientId?.name}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={stockEditDraft.onHand}
+                                  onChange={(e) => setStockEditDraft({ onHand: e.target.value })}
+                                />
+                              </td>
+                              <td>{row.ingredientId?.unit}</td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button type="button" disabled={busy} onClick={() => saveStock(row._id)}>Guardar</button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={cancelEditStock}>Cancelar</button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td>{row.ingredientId?.name}</td>
+                              <td className="mono">{Number(row.onHand).toFixed(2)}</td>
+                              <td>{row.ingredientId?.unit}</td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => startEditStock(row)}>Editar</button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => removeStock(row._id)}>Quitar</button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {stockRows.length > 0 && nextStep && (
+                <button type="button" onClick={goNext}>
+                  Continuar a {nextStep.title}
+                </button>
+              )}
+            </div>
           )}
 
           {stepId === 'menu' && (

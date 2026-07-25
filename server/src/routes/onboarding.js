@@ -174,6 +174,33 @@ router.post('/quick/stock', async (req, res) => {
   res.status(201).json(stock);
 });
 
+router.patch('/quick/stock/:id', async (req, res) => {
+  const restaurantId = restaurantScope(req);
+  const stock = await Stock.findOne({
+    _id: req.params.id,
+    restaurantId,
+    organizationId: req.user.organizationId,
+  });
+  if (!stock) return res.status(404).json({ error: 'Stock no encontrado' });
+
+  if (req.body.onHand != null) stock.onHand = Number(req.body.onHand);
+  if (req.body.parLevel != null) stock.parLevel = Number(req.body.parLevel);
+  if (req.body.reorderPoint != null) stock.reorderPoint = Number(req.body.reorderPoint);
+  await stock.save();
+  res.json(stock);
+});
+
+router.delete('/quick/stock/:id', async (req, res) => {
+  const restaurantId = restaurantScope(req);
+  const stock = await Stock.findOneAndDelete({
+    _id: req.params.id,
+    restaurantId,
+    organizationId: req.user.organizationId,
+  });
+  if (!stock) return res.status(404).json({ error: 'Stock no encontrado' });
+  res.json({ ok: true });
+});
+
 router.post('/quick/menu-item', async (req, res) => {
   const { name, price, categoryName = 'Platos fuertes', station = 'hot', description } = req.body;
   if (!name || price == null) return res.status(400).json({ error: 'Nombre y precio requeridos' });
