@@ -34,6 +34,7 @@ export default function Onboarding() {
   const [tables, setTables] = useState([]);
   const [staff, setStaff] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [inviteModal, setInviteModal] = useState(null);
 
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', unit: 'kg', costPerUnit: '' });
@@ -702,9 +703,15 @@ export default function Onboarding() {
           restaurantId,
         },
       });
+      const invited = {
+        name: staffForm.name,
+        email: staffForm.email,
+        role: staffForm.role,
+        message: data.message,
+      };
       setStaffForm({ name: '', email: '', role: staffForm.role });
       await afterMutation();
-      alert(data.message || 'Invitación enviada');
+      setInviteModal(invited);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -727,7 +734,13 @@ export default function Onboarding() {
         },
       });
       await afterMutation();
-      alert(data.message || 'Invitación reenviada');
+      setInviteModal({
+        name: invite.name,
+        email: invite.email,
+        role: invite.role,
+        message: data.message || 'Invitación reenviada',
+        resent: true,
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -824,6 +837,28 @@ export default function Onboarding() {
   const pct = Math.round((status.progress.requiredDone / Math.max(status.progress.requiredTotal, 1)) * 100);
   const visibleMenu = menuItems.filter((m) => m.available !== false);
   const visibleStaff = staff.filter((u) => u.active !== false);
+  const teamRows = [
+    ...invites.map((inv) => ({
+      key: `inv-${inv._id}`,
+      id: inv._id,
+      kind: 'invite',
+      name: inv.name,
+      email: inv.email,
+      role: inv.role,
+      status: 'pending',
+      raw: inv,
+    })),
+    ...visibleStaff.map((u) => ({
+      key: `user-${u._id}`,
+      id: u._id,
+      kind: 'user',
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      status: 'confirmed',
+      raw: u,
+    })),
+  ];
 
   const ContinueBtn = ({ ready }) =>
     ready && nextStep ? (
@@ -1667,7 +1702,7 @@ export default function Onboarding() {
             <div className="stack">
               <form className="stack" onSubmit={submitStaff}>
                 <p className="muted" style={{ margin: 0 }}>
-                  Enviamos un correo de invitación. La persona acepta el enlace, crea su contraseña y recién entonces entra al equipo.
+                  Al crear un usuario enviamos una invitación por correo. Queda en estado pendiente hasta que acepte el enlace y cree su contraseña.
                 </p>
                 <label>Nombre<input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required placeholder="Ej. Juan Pérez" /></label>
                 <label>Email<input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} required placeholder="correo@ejemplo.com" /></label>
@@ -1676,69 +1711,67 @@ export default function Onboarding() {
                     {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </label>
-                <button disabled={busy}>{busy ? 'Enviando…' : 'Enviar invitación'}</button>
+                <button disabled={busy}>{busy ? 'Enviando…' : 'Crear usuario'}</button>
               </form>
 
               <div>
-                <h3 style={{ margin: '0.5rem 0' }}>Invitaciones pendientes ({invites.length})</h3>
-                {!invites.length ? (
-                  <p className="muted">No hay invitaciones pendientes.</p>
+                <h3 style={{ margin: '0.5rem 0' }}>Equipo agregado ({teamRows.length})</h3>
+                {!teamRows.length ? (
+                  <p className="muted">Aún no has agregado miembros al equipo.</p>
                 ) : (
                   <table className="table">
-                    <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th></th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {invites.map((inv) => (
-                        <tr key={inv._id}>
-                          <td>{inv.name || '—'}</td>
-                          <td>{inv.email}</td>
-                          <td><span className="badge">{ROLE_LABEL[inv.role] || inv.role}</span></td>
-                          <td><span className="badge ok">Pendiente</span></td>
-                          <td>
-                            <div className="row" style={{ justifyContent: 'flex-end' }}>
-                              <button type="button" className="ghost" disabled={busy} onClick={() => resendInvite(inv)}>Reenviar</button>
-                              <button type="button" className="ghost" disabled={busy} onClick={() => revokeInvite(inv._id)}>Cancelar</button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              <div>
-                <h3 style={{ margin: '0.5rem 0' }}>Equipo activo ({visibleStaff.length})</h3>
-                {!visibleStaff.length ? <p className="muted">Aún nadie ha aceptado una invitación.</p> : (
-                  <table className="table">
-                    <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th></th></tr></thead>
-                    <tbody>
-                      {visibleStaff.map((u) => (
-                        <tr key={u._id}>
-                          {editingStaffId === u._id ? (
+                      {teamRows.map((row) => (
+                        <tr key={row.key}>
+                          {row.kind === 'user' && editingStaffId === row.id ? (
                             <>
                               <td><input value={staffEditDraft.name} onChange={(e) => setStaffEditDraft({ ...staffEditDraft, name: e.target.value })} /></td>
-                              <td>{u.email}</td>
+                              <td>{row.email}</td>
                               <td>
                                 <select value={staffEditDraft.role} onChange={(e) => setStaffEditDraft({ ...staffEditDraft, role: e.target.value })}>
                                   {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                                 </select>
                               </td>
+                              <td><span className="badge ok">Confirmado</span></td>
                               <td>
                                 <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                  <button type="button" disabled={busy} onClick={() => saveStaff(u._id)}>Guardar</button>
+                                  <button type="button" disabled={busy} onClick={() => saveStaff(row.id)}>Guardar</button>
                                   <button type="button" className="ghost" disabled={busy} onClick={() => setEditingStaffId(null)}>Cancelar</button>
                                 </div>
                               </td>
                             </>
                           ) : (
                             <>
-                              <td>{u.name}</td>
-                              <td>{u.email}</td>
-                              <td><span className="badge">{ROLE_LABEL[u.role] || u.role}</span></td>
+                              <td>{row.name || '—'}</td>
+                              <td>{row.email}</td>
+                              <td><span className="badge">{ROLE_LABEL[row.role] || row.role}</span></td>
+                              <td>
+                                {row.status === 'pending'
+                                  ? <span className="badge warn">Pendiente</span>
+                                  : <span className="badge ok">Confirmado</span>}
+                              </td>
                               <td>
                                 <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                  <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingStaffId(u._id); setStaffEditDraft({ name: u.name, role: u.role }); }}>Editar</button>
-                                  <button type="button" className="ghost" disabled={busy} onClick={() => removeStaff(u._id)}>Quitar</button>
+                                  {row.kind === 'invite' ? (
+                                    <>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => resendInvite(row.raw)}>Reenviar</button>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => revokeInvite(row.id)}>Cancelar</button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingStaffId(row.id); setStaffEditDraft({ name: row.name, role: row.role }); }}>Editar</button>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => removeStaff(row.id)}>Quitar</button>
+                                    </>
+                                  )}
                                 </div>
                               </td>
                             </>
@@ -1749,7 +1782,33 @@ export default function Onboarding() {
                   </table>
                 )}
               </div>
-              <ContinueBtn ready={visibleStaff.length > 0 || invites.length > 0} />
+              <ContinueBtn ready={teamRows.length > 0} />
+
+              {inviteModal && (
+                <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="invite-title" onClick={() => setInviteModal(null)}>
+                  <div className="modal-card panel invite-success-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="invite-success-icon" aria-hidden="true">✉</div>
+                    <h2 id="invite-title">
+                      {inviteModal.resent ? 'Invitación reenviada' : 'Usuario creado en pendiente'}
+                    </h2>
+                    <p className="muted" style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'var(--text)' }}>{inviteModal.name || inviteModal.email}</strong>
+                      {' '}quedó en estado <span className="badge warn">Pendiente</span>.
+                    </p>
+                    <p className="muted" style={{ textAlign: 'left', margin: '0 0 1rem' }}>
+                      Enviamos un correo a <strong style={{ color: 'var(--accent)' }}>{inviteModal.email}</strong>.
+                      Debe abrir el enlace, aceptar la invitación y crear su contraseña para pasar a
+                      {' '}<span className="badge ok">Confirmado</span> y unirse al equipo de trabajo.
+                    </p>
+                    <div className="invite-success-steps">
+                      <div><span>1</span> Revisa el correo (también spam)</div>
+                      <div><span>2</span> Pulsa «Aceptar invitación»</div>
+                      <div><span>3</span> Crea su contraseña e ingresa</div>
+                    </div>
+                    <button type="button" onClick={() => setInviteModal(null)}>Entendido</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

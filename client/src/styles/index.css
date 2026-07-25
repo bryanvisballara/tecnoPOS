@@ -275,6 +275,51 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
   margin-bottom: 0.75rem;
 }
 
+.invite-success-modal {
+  width: min(460px, 100%);
+  text-align: center;
+}
+.invite-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.85rem;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  background: linear-gradient(145deg, rgba(0, 168, 255, 0.25), rgba(0, 168, 255, 0.08));
+  border: 1px solid rgba(0, 168, 255, 0.35);
+  color: var(--accent);
+}
+.invite-success-steps {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0 0 1.1rem;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.invite-success-steps div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(125, 211, 252, 0.1);
+}
+.invite-success-steps span {
+  flex: 0 0 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #041018;
+  background: var(--accent);
+}
+
 .onboarding-page {
   min-height: 100vh;
   padding: 1.25rem;
