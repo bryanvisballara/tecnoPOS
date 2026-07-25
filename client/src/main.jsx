@@ -5,7 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import './styles/index.css';
 
-const BUILD_ID = '2026-07-25-edit-dish-full-v5';
+const BUILD_ID = '2026-07-25-edit-dish-v6';
 
 async function clearStaleClient() {
   try {

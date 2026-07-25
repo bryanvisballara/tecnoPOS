@@ -791,6 +791,7 @@ export default function Onboarding() {
 
         <section className="panel onboarding-main">
           <h2 style={{ marginTop: 0 }}>{current?.title}</h2>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>Build edit-dish-v6</p>
           <p className="muted">{current?.description}</p>
           {current?.done && <div className="badge ok" style={{ marginBottom: '0.75rem' }}>Paso completado ({current.count})</div>}
           {error && <div className="error">{error}</div>}
