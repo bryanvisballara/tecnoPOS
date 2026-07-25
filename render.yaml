@@ -16,3 +16,9 @@ services:
         sync: false
       - key: CLIENT_ORIGIN
         value: https://tecnopos.onrender.com
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        value: tecnopos@wwtecno.com
+      - key: BREVO_SENDER_NAME
+        value: TecnoPOS
