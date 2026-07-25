@@ -76,4 +76,16 @@ router.post('/ingredients', requireRoles('owner', 'manager'), async (req, res) =
   res.status(201).json(ingredient);
 });
 
+router.patch('/ingredients/:id', requireRoles('owner', 'manager'), async (req, res) => {
+  const updates = { ...req.body };
+  delete updates.organizationId;
+  const ingredient = await Ingredient.findOneAndUpdate(
+    { _id: req.params.id, organizationId: req.user.organizationId },
+    updates,
+    { new: true }
+  );
+  if (!ingredient) return res.status(404).json({ error: 'Insumo no encontrado' });
+  res.json(ingredient);
+});
+
 export default router;
