@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
@@ -52,12 +53,13 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
 const clientDist = path.join(__dirname, '../../client/dist');
+const indexHtml = path.join(clientDist, 'index.html');
 app.use(express.static(clientDist));
-app.get(/^(?!\/api).*/, (req, res, next) => {
-  if (req.method !== 'GET') return next();
-  res.sendFile(path.join(clientDist, 'index.html'), (err) => {
-    if (err) next();
-  });
+app.get(/^(?!\/api).*/, (_req, res) => {
+  if (!fs.existsSync(indexHtml)) {
+    return res.status(503).send('Frontend no compilado. Revisa el Build Command / postinstall.');
+  }
+  res.sendFile(indexHtml);
 });
 
 io.on('connection', (socket) => {
