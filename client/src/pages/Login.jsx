@@ -1,20 +1,12 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const DEMOS = [
-  { email: 'owner@tecnopos.app', label: 'Dueño cadena' },
-  { email: 'gerente@tecnopos.app', label: 'Gerente sede' },
-  { email: 'mesero@tecnopos.app', label: 'Mesero' },
-  { email: 'cocina@tecnopos.app', label: 'Cocina' },
-  { email: 'caja@tecnopos.app', label: 'Caja' },
-];
 
 export default function Login() {
   const { login, user, homeForRole, loading } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('owner@tecnopos.app');
-  const [password, setPassword] = useState('TecnoPOS2026!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -43,22 +35,33 @@ export default function Login() {
         <form onSubmit={submit}>
           <label>
             Email
-            <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              required
+            />
           </label>
           <label>
             Contraseña
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
           </label>
+          <div className="auth-links">
+            <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
+          </div>
           {error && <div className="error">{error}</div>}
           <button disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
         </form>
-        <div className="demo-users">
-          {DEMOS.map((d) => (
-            <button key={d.email} type="button" onClick={() => { setEmail(d.email); setPassword('TecnoPOS2026!'); }}>
-              Demo · {d.label}
-            </button>
-          ))}
-        </div>
+        <p className="auth-footer">
+          ¿Aún no tienes cuenta? <Link to="/register">Regístrate</Link>
+        </p>
       </div>
     </div>
   );

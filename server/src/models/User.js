@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema(
     pin: { type: String, select: false },
     active: { type: Boolean, default: true },
     avatarColor: { type: String, default: '#00a8ff' },
+    resetToken: { type: String, select: false },
+    resetExpires: { type: Date, select: false },
   },
   { timestamps: true }
 );

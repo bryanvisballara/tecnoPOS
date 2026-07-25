@@ -45,6 +45,11 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const data = await api('/api/auth/login', { method: 'POST', body: { email, password } });
+    applySession(data);
+    return data;
+  };
+
+  const applySession = (data) => {
     localStorage.setItem('tp_token', data.token);
     setUser(data.user);
     setOrganization(data.organization);
@@ -52,7 +57,6 @@ export function AuthProvider({ children }) {
     const first = data.restaurants[0]?._id || '';
     setRestaurantId(first);
     if (first) localStorage.setItem('tp_restaurant', first);
-    return data;
   };
 
   const logout = () => {
@@ -77,6 +81,7 @@ export function AuthProvider({ children }) {
       restaurantId,
       selectRestaurant,
       login,
+      applySession,
       logout,
       loading,
       homeForRole: (role) => ROLE_HOME[role] || '/dashboard',
