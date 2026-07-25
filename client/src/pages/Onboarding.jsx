@@ -83,6 +83,14 @@ export default function Onboarding() {
     () => ingredients.map((i) => ({ value: i._id, label: `${i.name} (${i.unit})` })),
     [ingredients]
   );
+  const stockedIngredientIds = useMemo(
+    () => new Set(stockRows.map((r) => String(r.ingredientId?._id || r.ingredientId))),
+    [stockRows]
+  );
+  const pendingStockIngredients = useMemo(
+    () => ingredients.filter((i) => !stockedIngredientIds.has(String(i._id))),
+    [ingredients, stockedIngredientIds]
+  );
 
   const afterMutation = async (refreshSession = false) => {
     await reload();
@@ -578,6 +586,27 @@ export default function Onboarding() {
                   </label>
                   <button disabled={busy || !stockForm.ingredientId}>{busy ? 'Guardando…' : 'Cargar stock'}</button>
                 </form>
+              )}
+              {pendingStockIngredients.length > 0 && (
+                <div>
+                  <h3 style={{ margin: '0.5rem 0' }}>Insumos sin stock ({pendingStockIngredients.length})</h3>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Estos insumos ya existen, pero aún no tienen cantidad en inventario. Elígelos arriba y pulsa «Cargar stock».
+                  </p>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {pendingStockIngredients.map((ing) => (
+                      <button
+                        key={ing._id}
+                        type="button"
+                        className="ghost"
+                        disabled={busy}
+                        onClick={() => setStockForm({ ...stockForm, ingredientId: ing._id })}
+                      >
+                        {ing.name} ({ing.unit})
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               <div>
                 <h3 style={{ margin: '0.5rem 0' }}>Stock cargado ({stockRows.length})</h3>
