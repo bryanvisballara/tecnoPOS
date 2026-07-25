@@ -32,11 +32,11 @@ router.get('/status', async (req, res) => {
       restaurantId
         ? Stock.countDocuments({ organizationId: orgId, restaurantId, onHand: { $gt: 0 } })
         : Stock.countDocuments({ organizationId: orgId, onHand: { $gt: 0 } }),
-      MenuItem.countDocuments({ organizationId: orgId }),
+      MenuItem.countDocuments({ organizationId: orgId, available: { $ne: false } }),
       restaurantId
         ? Table.countDocuments({ organizationId: orgId, restaurantId })
         : Table.countDocuments({ organizationId: orgId }),
-      User.countDocuments({ organizationId: orgId, role: { $ne: 'owner' }, active: true }),
+      User.countDocuments({ organizationId: orgId, role: { $ne: 'owner' }, active: { $ne: false } }),
       Restaurant.countDocuments({ organizationId: orgId, active: true }),
       Category.find({ organizationId: orgId, active: true }).sort({ sortOrder: 1 }),
     ]);
@@ -234,22 +234,20 @@ router.post('/quick/tables', async (req, res) => {
   const restaurantId = restaurantScope(req);
   if (!restaurantId) return res.status(400).json({ error: 'Restaurante requerido' });
 
-  const count = Math.min(Math.max(Number(req.body.count) || 8, 1), 40);
+  const count = Math.min(Math.max(Number(req.body.count) || 1, 1), 40);
   const existing = await Table.countDocuments({ restaurantId });
-  if (existing > 0) {
-    return res.json({ ok: true, created: 0, message: 'Ya tienes mesas configuradas' });
-  }
 
   const tables = [];
   for (let i = 0; i < count; i++) {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
+    const n = existing + i;
+    const col = n % 4;
+    const row = Math.floor(n / 4);
     tables.push({
       organizationId: req.user.organizationId,
       restaurantId,
-      name: `M${i + 1}`,
-      seats: 4,
-      zone: row === 0 ? 'Salón' : row === 1 ? 'Terraza' : 'VIP',
+      name: req.body.name || `M${n + 1}`,
+      seats: Number(req.body.seats) || 4,
+      zone: req.body.zone || (row === 0 ? 'Salón' : row === 1 ? 'Terraza' : 'VIP'),
       x: 60 + col * 140,
       y: 60 + row * 160,
       width: 90,
@@ -258,8 +256,34 @@ router.post('/quick/tables', async (req, res) => {
       status: 'free',
     });
   }
-  await Table.insertMany(tables);
-  res.status(201).json({ ok: true, created: tables.length });
+  const created = await Table.insertMany(tables);
+  res.status(201).json({ ok: true, created: created.length, tables: created });
+});
+
+router.patch('/quick/tables/:id', async (req, res) => {
+  const restaurantId = restaurantScope(req);
+  const table = await Table.findOneAndUpdate(
+    { _id: req.params.id, restaurantId, organizationId: req.user.organizationId },
+    {
+      ...(req.body.name != null ? { name: req.body.name } : {}),
+      ...(req.body.seats != null ? { seats: Number(req.body.seats) } : {}),
+      ...(req.body.zone != null ? { zone: req.body.zone } : {}),
+    },
+    { new: true }
+  );
+  if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+  res.json(table);
+});
+
+router.delete('/quick/tables/:id', async (req, res) => {
+  const restaurantId = restaurantScope(req);
+  const table = await Table.findOneAndDelete({
+    _id: req.params.id,
+    restaurantId,
+    organizationId: req.user.organizationId,
+  });
+  if (!table) return res.status(404).json({ error: 'Mesa no encontrada' });
+  res.json({ ok: true });
 });
 
 router.post('/quick/staff', async (req, res) => {

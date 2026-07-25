@@ -13,10 +13,11 @@ export async function api(path, options = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.restaurantId) headers['x-restaurant-id'] = options.restaurantId;
 
+  const { restaurantId, body, headers: _h, ...fetchOpts } = options;
   const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...fetchOpts,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   const data = await res.json().catch(() => ({}));
