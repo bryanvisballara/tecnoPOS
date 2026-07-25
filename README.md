@@ -52,8 +52,8 @@ Contraseña de todos: `TecnoPOS2026!`
 ## Deploy (Render)
 
 1. Variables de entorno: `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, `SEED_ON_BOOT=true`
-2. Build: `npm run install:all && npm run build`
-3. Start: `npm start`
+2. Build Command: `npm install && npm run build`
+3. Start Command: `node server/src/index.js`
 
 Deploy hook del servicio:
 
