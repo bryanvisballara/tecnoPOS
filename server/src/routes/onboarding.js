@@ -24,6 +24,7 @@ router.get('/status', async (req, res) => {
     const [
       ingredientCount,
       stockCount,
+      categoryCount,
       menuCount,
       tableCount,
       staffCount,
@@ -34,6 +35,7 @@ router.get('/status', async (req, res) => {
       restaurantId
         ? Stock.countDocuments({ organizationId: orgId, restaurantId, onHand: { $gt: 0 } })
         : Stock.countDocuments({ organizationId: orgId, onHand: { $gt: 0 } }),
+      Category.countDocuments({ organizationId: orgId, active: true }),
       MenuItem.countDocuments({ organizationId: orgId, available: { $ne: false } }),
       restaurantId
         ? Table.countDocuments({ organizationId: orgId, restaurantId })
@@ -59,6 +61,14 @@ router.get('/status', async (req, res) => {
         done: stockCount > 0,
         required: true,
         count: stockCount,
+      },
+      {
+        id: 'categories',
+        title: 'Categorías del menú',
+        description: 'Organiza el menú: entradas, fuertes, bebidas, postres, combos, etc.',
+        done: categoryCount > 0,
+        required: true,
+        count: categoryCount,
       },
       {
         id: 'menu',
@@ -203,10 +213,70 @@ router.delete('/quick/stock/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/quick/category', async (req, res) => {
+  const { name, color = '#00a8ff', sortOrder } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'Nombre de categoría requerido' });
+  const existing = await Category.findOne({
+    organizationId: req.user.organizationId,
+    name: name.trim(),
+  });
+  if (existing) {
+    if (existing.active === false) {
+      existing.active = true;
+      existing.color = color || existing.color;
+      if (sortOrder != null) existing.sortOrder = Number(sortOrder);
+      await existing.save();
+      return res.status(200).json(existing);
+    }
+    return res.status(400).json({ error: 'Esa categoría ya existe' });
+  }
+  const count = await Category.countDocuments({ organizationId: req.user.organizationId });
+  const category = await Category.create({
+    organizationId: req.user.organizationId,
+    name: name.trim(),
+    color,
+    sortOrder: sortOrder != null ? Number(sortOrder) : count + 1,
+  });
+  res.status(201).json(category);
+});
+
+router.post('/quick/categories/suggest', async (req, res) => {
+  const suggestions = [
+    { name: 'Entradas', color: '#38bdf8' },
+    { name: 'Platos fuertes', color: '#00a8ff' },
+    { name: 'Bebidas', color: '#67e8f9' },
+    { name: 'Gaseosas', color: '#22d3ee' },
+    { name: 'Postres', color: '#c4b5fd' },
+    { name: 'Combos', color: '#a3e635' },
+  ];
+  const created = [];
+  for (let i = 0; i < suggestions.length; i++) {
+    const s = suggestions[i];
+    let cat = await Category.findOne({ organizationId: req.user.organizationId, name: s.name });
+    if (!cat) {
+      cat = await Category.create({
+        organizationId: req.user.organizationId,
+        name: s.name,
+        color: s.color,
+        sortOrder: i + 1,
+      });
+      created.push(cat);
+    } else if (cat.active === false) {
+      cat.active = true;
+      cat.color = s.color;
+      await cat.save();
+      created.push(cat);
+    }
+  }
+  const all = await Category.find({ organizationId: req.user.organizationId, active: true }).sort({ sortOrder: 1 });
+  res.json({ created: created.length, categories: all });
+});
+
 router.post('/quick/menu-item', async (req, res) => {
   const {
     name,
     price,
+    categoryId,
     categoryName = 'Platos fuertes',
     station = 'hot',
     description,
@@ -215,17 +285,28 @@ router.post('/quick/menu-item', async (req, res) => {
   } = req.body;
   if (!name || price == null) return res.status(400).json({ error: 'Nombre y precio requeridos' });
 
-  let category = await Category.findOne({
-    organizationId: req.user.organizationId,
-    name: categoryName,
-  });
-  if (!category) {
-    category = await Category.create({
+  let category = null;
+  if (categoryId) {
+    category = await Category.findOne({
+      _id: categoryId,
+      organizationId: req.user.organizationId,
+      active: { $ne: false },
+    });
+    if (!category) return res.status(400).json({ error: 'Categoría inválida' });
+  } else {
+    category = await Category.findOne({
       organizationId: req.user.organizationId,
       name: categoryName,
-      sortOrder: 1,
-      color: '#00a8ff',
+      active: { $ne: false },
     });
+    if (!category) {
+      category = await Category.create({
+        organizationId: req.user.organizationId,
+        name: categoryName,
+        sortOrder: 1,
+        color: '#00a8ff',
+      });
+    }
   }
 
   const cleanLines = (Array.isArray(lines) ? lines : [])

@@ -56,11 +56,22 @@ app.use('/api/onboarding', onboardingRoutes);
 
 const clientDist = path.join(__dirname, '../../client/dist');
 const indexHtml = path.join(clientDist, 'index.html');
-app.use(express.static(clientDist));
+app.use(
+  express.static(clientDist, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      } else if (/\.(js|css)$/.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  })
+);
 app.get(/^(?!\/api).*/, (_req, res) => {
   if (!fs.existsSync(indexHtml)) {
     return res.status(503).send('Frontend no compilado. Revisa el Build Command / postinstall.');
   }
+  res.setHeader('Cache-Control', 'no-store');
   res.sendFile(indexHtml);
 });
 

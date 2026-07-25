@@ -19,6 +19,18 @@ router.post('/categories', requireRoles('owner', 'manager'), async (req, res) =>
   res.status(201).json(cat);
 });
 
+router.patch('/categories/:id', requireRoles('owner', 'manager'), async (req, res) => {
+  const updates = { ...req.body };
+  delete updates.organizationId;
+  const cat = await Category.findOneAndUpdate(
+    { _id: req.params.id, organizationId: req.user.organizationId },
+    updates,
+    { new: true }
+  );
+  if (!cat) return res.status(404).json({ error: 'Categoría no encontrada' });
+  res.json(cat);
+});
+
 router.get('/items', async (req, res) => {
   const filter = { organizationId: req.user.organizationId };
   if (req.query.categoryId) filter.categoryId = req.query.categoryId;

@@ -6,6 +6,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { compatibleUnits, recipeLineCost } from '../utils/units';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
+const CAT_COLORS = ['#00a8ff', '#38bdf8', '#67e8f9', '#22d3ee', '#a3e635', '#c4b5fd', '#fbbf24', '#fb7185'];
 const STAFF_ROLES = [
   { value: 'waiter', label: 'Mesero' },
   { value: 'cashier', label: 'Caja' },
@@ -24,6 +25,7 @@ export default function Onboarding() {
 
   const [ingredients, setIngredients] = useState([]);
   const [stockRows, setStockRows] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [tables, setTables] = useState([]);
   const [staff, setStaff] = useState([]);
@@ -32,6 +34,8 @@ export default function Onboarding() {
   const [editDraft, setEditDraft] = useState({ name: '', unit: 'kg', costPerUnit: '' });
   const [editingStockId, setEditingStockId] = useState(null);
   const [stockEditDraft, setStockEditDraft] = useState({ onHand: '' });
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [categoryEditDraft, setCategoryEditDraft] = useState({ name: '', color: '#00a8ff' });
   const [editingMenuId, setEditingMenuId] = useState(null);
   const [menuEditDraft, setMenuEditDraft] = useState({ name: '', price: '' });
   const [editingTableId, setEditingTableId] = useState(null);
@@ -43,7 +47,8 @@ export default function Onboarding() {
 
   const [ingredientForm, setIngredientForm] = useState({ name: '', unit: 'kg', costPerUnit: '' });
   const [stockForm, setStockForm] = useState({ ingredientId: '', quantity: '10' });
-  const [menuForm, setMenuForm] = useState({ name: '', price: '', categoryName: 'Platos fuertes' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', color: '#00a8ff' });
+  const [menuForm, setMenuForm] = useState({ name: '', price: '', categoryId: '' });
   const [recipeLines, setRecipeLines] = useState([]);
   const [recipeDraft, setRecipeDraft] = useState({ ingredientId: '', quantity: '', unit: 'kg' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
@@ -53,19 +58,22 @@ export default function Onboarding() {
   const reload = useCallback(async () => {
     const data = await api(`/api/onboarding/status?restaurantId=${restaurantId}`, { restaurantId });
     setStatus(data);
-    const [ings, stock, items, tableList, users] = await Promise.all([
+    const [ings, stock, cats, items, tableList, users] = await Promise.all([
       api('/api/menu/ingredients'),
       api(`/api/inventory/stock?restaurantId=${restaurantId}`, { restaurantId }).catch(() => []),
+      api('/api/menu/categories').catch(() => data.categories || []),
       api('/api/menu/items').catch(() => []),
       api(`/api/tables?restaurantId=${restaurantId}`, { restaurantId }).catch(() => []),
       api('/api/users').catch(() => []),
     ]);
     setIngredients(ings);
     setStockRows(stock);
+    setCategories(cats);
     setMenuItems(items);
     setTables(tableList);
     setStaff(users.filter((u) => u.role !== 'owner'));
     setStockForm((f) => ({ ...f, ingredientId: f.ingredientId || ings[0]?._id || '' }));
+    setMenuForm((f) => ({ ...f, categoryId: f.categoryId || cats[0]?._id || '' }));
     setRecipeDraft((d) => ({
       ...d,
       ingredientId: d.ingredientId || ings[0]?._id || '',
@@ -262,8 +270,75 @@ export default function Onboarding() {
     }
   };
 
+  const submitCategory = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/onboarding/quick/category', {
+        method: 'POST',
+        body: { name: categoryForm.name, color: categoryForm.color },
+      });
+      setCategoryForm({ name: '', color: categoryForm.color });
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const suggestCategories = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/onboarding/quick/categories/suggest', { method: 'POST' });
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveCategory = async (id) => {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/menu/categories/${id}`, {
+        method: 'PATCH',
+        body: { name: categoryEditDraft.name.trim(), color: categoryEditDraft.color },
+      });
+      setEditingCategoryId(null);
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeCategory = async (id) => {
+    if (!confirm('¿Quitar esta categoría?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/menu/categories/${id}`, { method: 'PATCH', body: { active: false } });
+      setEditingCategoryId(null);
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitMenu = async (e) => {
     e.preventDefault();
+    if (!menuForm.categoryId) {
+      setError('Elige una categoría del menú.');
+      return;
+    }
     if (!recipeLines.length) {
       setError('Agrega al menos un insumo a la receta del plato.');
       return;
@@ -276,7 +351,7 @@ export default function Onboarding() {
         body: {
           name: menuForm.name,
           price: Number(menuForm.price),
-          categoryName: menuForm.categoryName,
+          categoryId: menuForm.categoryId,
           lines: recipeLines.map((l) => ({
             ingredientId: l.ingredientId,
             quantity: Number(l.quantity),
@@ -284,7 +359,7 @@ export default function Onboarding() {
           })),
         },
       });
-      setMenuForm({ name: '', price: '', categoryName: menuForm.categoryName });
+      setMenuForm((f) => ({ name: '', price: '', categoryId: f.categoryId }));
       setRecipeLines([]);
       setRecipeDraft({ ingredientId: ingredients[0]?._id || '', quantity: '', unit: ingredients[0]?.unit || 'kg' });
       await afterMutation();
@@ -746,9 +821,151 @@ export default function Onboarding() {
             </div>
           )}
 
+          {stepId === 'categories' && (
+            <div className="stack">
+              <form className="stack" onSubmit={submitCategory}>
+                <label>
+                  Nombre de la categoría
+                  <input
+                    value={categoryForm.name}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                    required
+                    placeholder="Ej. Entradas, Platos fuertes, Gaseosas…"
+                  />
+                </label>
+                <label>
+                  Color
+                  <div className="row" style={{ gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {CAT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        aria-label={c}
+                        onClick={() => setCategoryForm({ ...categoryForm, color: c })}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 8,
+                          background: c,
+                          border: categoryForm.color === c ? '2px solid #fff' : '2px solid transparent',
+                          padding: 0,
+                          cursor: 'pointer',
+                        }}
+                      />
+                    ))}
+                  </div>
+                </label>
+                <div className="row" style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button disabled={busy}>{busy ? 'Guardando…' : 'Agregar categoría'}</button>
+                  <button type="button" className="ghost" disabled={busy} onClick={suggestCategories}>
+                    Cargar sugeridas (entradas, fuertes, bebidas…)
+                  </button>
+                </div>
+              </form>
+              <div>
+                <h3 style={{ margin: '0.5rem 0' }}>Categorías ({categories.length})</h3>
+                {!categories.length ? (
+                  <p className="muted">Aún no hay categorías. Agrégalas o carga las sugeridas.</p>
+                ) : (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Color</th>
+                        <th>Nombre</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categories.map((cat) => (
+                        <tr key={cat._id}>
+                          {editingCategoryId === cat._id ? (
+                            <>
+                              <td>
+                                <div className="row" style={{ gap: '0.35rem', flexWrap: 'wrap' }}>
+                                  {CAT_COLORS.map((c) => (
+                                    <button
+                                      key={c}
+                                      type="button"
+                                      onClick={() => setCategoryEditDraft({ ...categoryEditDraft, color: c })}
+                                      style={{
+                                        width: 22,
+                                        height: 22,
+                                        borderRadius: 6,
+                                        background: c,
+                                        border: categoryEditDraft.color === c ? '2px solid #fff' : '2px solid transparent',
+                                        padding: 0,
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              </td>
+                              <td>
+                                <input
+                                  value={categoryEditDraft.name}
+                                  onChange={(e) => setCategoryEditDraft({ ...categoryEditDraft, name: e.target.value })}
+                                />
+                              </td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button type="button" disabled={busy} onClick={() => saveCategory(cat._id)}>Guardar</button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => setEditingCategoryId(null)}>Cancelar</button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td>
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    width: 14,
+                                    height: 14,
+                                    borderRadius: 4,
+                                    background: cat.color || '#00a8ff',
+                                  }}
+                                />
+                              </td>
+                              <td>{cat.name}</td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button
+                                    type="button"
+                                    className="ghost"
+                                    disabled={busy}
+                                    onClick={() => {
+                                      setEditingCategoryId(cat._id);
+                                      setCategoryEditDraft({ name: cat.name, color: cat.color || '#00a8ff' });
+                                    }}
+                                  >
+                                    Editar
+                                  </button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => removeCategory(cat._id)}>
+                                    Quitar
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <ContinueBtn ready={categories.length > 0} />
+            </div>
+          )}
+
           {stepId === 'menu' && (
             <div className="stack">
-              {!ingredients.length ? (
+              {!categories.length ? (
+                <div className="muted">
+                  Primero crea categorías en el paso anterior (entradas, fuertes, bebidas…).
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <button type="button" onClick={() => setStepId('categories')}>Ir a Categorías del menú</button>
+                  </div>
+                </div>
+              ) : !ingredients.length ? (
                 <div className="muted">Primero agrega insumos en el paso 1 para armar la receta del plato.</div>
               ) : (
                 <form
@@ -757,7 +974,18 @@ export default function Onboarding() {
                 >
                   <label>Nombre del plato<input value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} required placeholder="Ej. Shawarma de pollo" /></label>
                   <label>Precio de venta (COP)<input type="number" min="0" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} required placeholder="28000" /></label>
-                  <label>Categoría<input value={menuForm.categoryName} onChange={(e) => setMenuForm({ ...menuForm, categoryName: e.target.value })} placeholder="Platos fuertes" /></label>
+                  <label>
+                    Categoría
+                    <select
+                      value={menuForm.categoryId}
+                      onChange={(e) => setMenuForm({ ...menuForm, categoryId: e.target.value })}
+                      required
+                    >
+                      {categories.map((c) => (
+                        <option key={c._id} value={c._id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </label>
 
                   <div className="stack" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
                     <h3 style={{ margin: 0 }}>Receta del plato</h3>
@@ -866,6 +1094,7 @@ export default function Onboarding() {
                     <thead>
                       <tr>
                         <th>Plato</th>
+                        <th>Categoría</th>
                         <th>Precio</th>
                         <th>Costo</th>
                         <th>Receta</th>
@@ -883,6 +1112,7 @@ export default function Onboarding() {
                             {editingMenuId === item._id ? (
                               <>
                                 <td><input value={menuEditDraft.name} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, name: e.target.value })} /></td>
+                                <td>{item.categoryId?.name || '—'}</td>
                                 <td><input type="number" min="0" value={menuEditDraft.price} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, price: e.target.value })} /></td>
                                 <td className="mono">{money(item.cost)}</td>
                                 <td className="muted" style={{ fontSize: '0.85rem' }}>{recipeLabel}</td>
@@ -896,6 +1126,7 @@ export default function Onboarding() {
                             ) : (
                               <>
                                 <td>{item.name}</td>
+                                <td>{item.categoryId?.name || '—'}</td>
                                 <td className="mono">{money(item.price)}</td>
                                 <td className="mono">{money(item.cost)}</td>
                                 <td className="muted" style={{ fontSize: '0.85rem', maxWidth: 280 }}>{recipeLabel}</td>
