@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
@@ -19,6 +19,8 @@ export default function Onboarding() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [ingredients, setIngredients] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({ name: '', unit: 'kg', costPerUnit: '' });
 
   const [ingredientForm, setIngredientForm] = useState({ name: '', unit: 'kg', costPerUnit: '' });
   const [stockForm, setStockForm] = useState({ ingredientId: '', quantity: '10' });
@@ -30,12 +32,7 @@ export default function Onboarding() {
   const reload = useCallback(async () => {
     const data = await api(`/api/onboarding/status?restaurantId=${restaurantId}`, { restaurantId });
     setStatus(data);
-    setStepId((prev) => {
-      const current = data.steps.find((s) => s.id === prev);
-      if (current && !current.done) return prev;
-      const firstPending = data.steps.find((s) => !s.done && s.required) || data.steps.find((s) => !s.done);
-      return firstPending?.id || prev;
-    });
+    // Stay on current step; user advances manually
     const ings = await api('/api/menu/ingredients');
     setIngredients(ings);
     setStockForm((f) => ({ ...f, ingredientId: f.ingredientId || ings[0]?._id || '' }));
@@ -51,11 +48,72 @@ export default function Onboarding() {
   if (!['owner', 'manager'].includes(user.role)) return <Navigate to="/dashboard" replace />;
 
   const current = status?.steps?.find((s) => s.id === stepId);
+  const nextStep = status?.steps?.find((_, idx) => {
+    const currentIdx = status.steps.findIndex((x) => x.id === stepId);
+    return idx === currentIdx + 1;
+  });
 
   const afterMutation = async () => {
     await reload();
     const me = await api('/api/auth/me');
     applySession(me);
+  };
+
+  const goNext = () => {
+    if (nextStep) setStepId(nextStep.id);
+  };
+
+  const startEditIngredient = (item) => {
+    setEditingId(item._id);
+    setEditDraft({
+      name: item.name || '',
+      unit: item.unit || 'kg',
+      costPerUnit: String(item.costPerUnit ?? ''),
+    });
+  };
+
+  const cancelEditIngredient = () => {
+    setEditingId(null);
+    setEditDraft({ name: '', unit: 'kg', costPerUnit: '' });
+  };
+
+  const saveIngredient = async (id) => {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/menu/ingredients/${id}`, {
+        method: 'PATCH',
+        body: {
+          name: editDraft.name.trim(),
+          unit: editDraft.unit,
+          costPerUnit: Number(editDraft.costPerUnit) || 0,
+        },
+      });
+      cancelEditIngredient();
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeIngredient = async (id) => {
+    if (!confirm('¿Quitar este insumo de la lista?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/menu/ingredients/${id}`, {
+        method: 'PATCH',
+        body: { active: false },
+      });
+      if (editingId === id) cancelEditIngredient();
+      await afterMutation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const finish = async (skip = false) => {
@@ -252,21 +310,96 @@ export default function Onboarding() {
           {error && <div className="error">{error}</div>}
 
           {stepId === 'ingredients' && (
-            <form className="stack" onSubmit={submitIngredient}>
-              <label>Nombre del insumo<input value={ingredientForm.name} onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })} required placeholder="Ej. Pollo, Arroz, Queso" /></label>
-              <div className="row">
-                <label style={{ flex: 1 }}>Unidad
-                  <select value={ingredientForm.unit} onChange={(e) => setIngredientForm({ ...ingredientForm, unit: e.target.value })}>
-                    {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </label>
-                <label style={{ flex: 1 }}>Costo unitario (COP)
-                  <input type="number" min="0" value={ingredientForm.costPerUnit} onChange={(e) => setIngredientForm({ ...ingredientForm, costPerUnit: e.target.value })} placeholder="12000" />
-                </label>
+            <div className="stack">
+              <form className="stack" onSubmit={submitIngredient}>
+                <label>Nombre del insumo<input value={ingredientForm.name} onChange={(e) => setIngredientForm({ ...ingredientForm, name: e.target.value })} required placeholder="Ej. Pollo, Arroz, Queso" /></label>
+                <div className="row">
+                  <label style={{ flex: 1 }}>Unidad
+                    <select value={ingredientForm.unit} onChange={(e) => setIngredientForm({ ...ingredientForm, unit: e.target.value })}>
+                      {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ flex: 1 }}>Costo unitario (COP)
+                    <input type="number" min="0" value={ingredientForm.costPerUnit} onChange={(e) => setIngredientForm({ ...ingredientForm, costPerUnit: e.target.value })} placeholder="12000" />
+                  </label>
+                </div>
+                <button disabled={busy}>{busy ? 'Guardando…' : 'Agregar insumo'}</button>
+              </form>
+
+              <div>
+                <h3 style={{ margin: '0.5rem 0' }}>Insumos agregados ({ingredients.length})</h3>
+                {!ingredients.length ? (
+                  <p className="muted">Aún no has agregado insumos. Ve sumándolos arriba.</p>
+                ) : (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Unidad</th>
+                        <th>Costo</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ingredients.map((item) => (
+                        <tr key={item._id}>
+                          {editingId === item._id ? (
+                            <>
+                              <td>
+                                <input
+                                  value={editDraft.name}
+                                  onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                                />
+                              </td>
+                              <td>
+                                <select
+                                  value={editDraft.unit}
+                                  onChange={(e) => setEditDraft({ ...editDraft, unit: e.target.value })}
+                                >
+                                  {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editDraft.costPerUnit}
+                                  onChange={(e) => setEditDraft({ ...editDraft, costPerUnit: e.target.value })}
+                                />
+                              </td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button type="button" disabled={busy} onClick={() => saveIngredient(item._id)}>Guardar</button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={cancelEditIngredient}>Cancelar</button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td>{item.name}</td>
+                              <td>{item.unit}</td>
+                              <td className="mono">{money(item.costPerUnit)}</td>
+                              <td>
+                                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => startEditIngredient(item)}>Editar</button>
+                                  <button type="button" className="ghost" disabled={busy} onClick={() => removeIngredient(item._id)}>Quitar</button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
-              <button disabled={busy}>{busy ? 'Guardando…' : 'Agregar insumo'}</button>
-              <p className="muted">Puedes agregar varios. Cuando tengas al menos uno, avanza al inventario.</p>
-            </form>
+
+              {ingredients.length > 0 && nextStep && (
+                <button type="button" onClick={goNext}>
+                  Continuar a {nextStep.title}
+                </button>
+              )}
+            </div>
           )}
 
           {stepId === 'inventory' && (
