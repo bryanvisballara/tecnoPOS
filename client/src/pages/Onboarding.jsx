@@ -51,6 +51,8 @@ export default function Onboarding() {
   const [menuForm, setMenuForm] = useState({ name: '', price: '', categoryId: '' });
   const [recipeLines, setRecipeLines] = useState([]);
   const [recipeDraft, setRecipeDraft] = useState({ ingredientId: '', quantity: '', unit: 'kg' });
+  const [editingRecipeKey, setEditingRecipeKey] = useState(null);
+  const [recipeLineEditDraft, setRecipeLineEditDraft] = useState({ quantity: '', unit: 'kg' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'waiter' });
   const [restoForm, setRestoForm] = useState({ name: '', city: '', address: '' });
@@ -116,9 +118,15 @@ export default function Onboarding() {
   const recipePreview = useMemo(() => {
     const breakdown = recipeLines.map((line) => {
       const ing = ingredientsById[String(line.ingredientId)];
-      const cost = recipeLineCost(line.quantity, line.unit, ing);
+      const qty = editingRecipeKey === line.key
+        ? Number(recipeLineEditDraft.quantity) || 0
+        : Number(line.quantity) || 0;
+      const unit = editingRecipeKey === line.key ? recipeLineEditDraft.unit : line.unit;
+      const cost = recipeLineCost(qty, unit, ing);
       return {
         ...line,
+        quantity: qty,
+        unit,
         name: ing?.name || 'Insumo',
         cost,
       };
@@ -126,7 +134,7 @@ export default function Onboarding() {
     const totalCost = breakdown.reduce((s, l) => s + l.cost, 0);
     const price = Number(menuForm.price) || 0;
     return { breakdown, totalCost, margin: price - totalCost };
-  }, [recipeLines, ingredientsById, menuForm.price]);
+  }, [recipeLines, ingredientsById, menuForm.price, editingRecipeKey, recipeLineEditDraft]);
 
 
   const afterMutation = async (refreshSession = false) => {
@@ -361,6 +369,7 @@ export default function Onboarding() {
       });
       setMenuForm((f) => ({ name: '', price: '', categoryId: f.categoryId }));
       setRecipeLines([]);
+      setEditingRecipeKey(null);
       setRecipeDraft({ ingredientId: ingredients[0]?._id || '', quantity: '', unit: ingredients[0]?.unit || 'kg' });
       await afterMutation();
     } catch (err) {
@@ -390,6 +399,26 @@ export default function Onboarding() {
 
   const removeRecipeLine = (key) => {
     setRecipeLines((rows) => rows.filter((r) => r.key !== key));
+    if (editingRecipeKey === key) setEditingRecipeKey(null);
+  };
+
+  const startEditRecipeLine = (line) => {
+    setEditingRecipeKey(line.key);
+    setRecipeLineEditDraft({ quantity: String(line.quantity), unit: line.unit });
+    setError('');
+  };
+
+  const saveRecipeLine = (key) => {
+    const qty = Number(recipeLineEditDraft.quantity);
+    if (!(qty > 0)) {
+      setError('La cantidad debe ser mayor a 0.');
+      return;
+    }
+    setError('');
+    setRecipeLines((rows) =>
+      rows.map((r) => (r.key === key ? { ...r, quantity: qty, unit: recipeLineEditDraft.unit } : r))
+    );
+    setEditingRecipeKey(null);
   };
 
   const saveMenu = async (id) => {
@@ -1053,18 +1082,58 @@ export default function Onboarding() {
                           </tr>
                         </thead>
                         <tbody>
-                          {recipePreview.breakdown.map((line) => (
-                            <tr key={line.key}>
-                              <td>{line.name}</td>
-                              <td className="mono">{line.quantity} {line.unit}</td>
-                              <td className="mono">{money(line.cost)}</td>
-                              <td>
-                                <button type="button" className="ghost" disabled={busy} onClick={() => removeRecipeLine(line.key)}>
-                                  Quitar
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {recipePreview.breakdown.map((line) => {
+                            const ing = ingredientsById[String(line.ingredientId)];
+                            const editUnits = compatibleUnits(ing?.unit || line.unit);
+                            return (
+                              <tr key={line.key}>
+                                {editingRecipeKey === line.key ? (
+                                  <>
+                                    <td>{line.name}</td>
+                                    <td>
+                                      <div className="row" style={{ gap: '0.5rem', alignItems: 'center' }}>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={recipeLineEditDraft.quantity}
+                                          onChange={(e) => setRecipeLineEditDraft({ ...recipeLineEditDraft, quantity: e.target.value })}
+                                          style={{ width: 90 }}
+                                        />
+                                        <select
+                                          value={recipeLineEditDraft.unit}
+                                          onChange={(e) => setRecipeLineEditDraft({ ...recipeLineEditDraft, unit: e.target.value })}
+                                        >
+                                          {editUnits.map((u) => (
+                                            <option key={u} value={u}>{u}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </td>
+                                    <td className="mono">{money(line.cost)}</td>
+                                    <td>
+                                      <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                        <button type="button" disabled={busy} onClick={() => saveRecipeLine(line.key)}>Guardar</button>
+                                        <button type="button" className="ghost" disabled={busy} onClick={() => setEditingRecipeKey(null)}>Cancelar</button>
+                                      </div>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td>{line.name}</td>
+                                    <td className="mono">{line.quantity} {line.unit}</td>
+                                    <td className="mono">{money(line.cost)}</td>
+                                    <td>
+                                      <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                        <button type="button" className="ghost" disabled={busy} onClick={() => startEditRecipeLine(line)}>Editar</button>
+                                        <button type="button" className="ghost" disabled={busy} onClick={() => removeRecipeLine(line.key)}>Quitar</button>
+                                      </div>
+                                    </td>
+                                  </>
+                                )}
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr>
