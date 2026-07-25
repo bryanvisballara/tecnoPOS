@@ -379,6 +379,97 @@ router.post('/quick/menu-item', async (req, res) => {
   res.status(201).json(populated);
 });
 
+router.patch('/quick/menu-item/:id', async (req, res) => {
+  const {
+    name,
+    price,
+    categoryId,
+    portions = 1,
+    lines = [],
+    operatingCosts = [],
+  } = req.body;
+
+  const item = await MenuItem.findOne({
+    _id: req.params.id,
+    organizationId: req.user.organizationId,
+  });
+  if (!item) return res.status(404).json({ error: 'Plato no encontrado' });
+
+  if (categoryId) {
+    const category = await Category.findOne({
+      _id: categoryId,
+      organizationId: req.user.organizationId,
+      active: { $ne: false },
+    });
+    if (!category) return res.status(400).json({ error: 'Categoría inválida' });
+    item.categoryId = category._id;
+  }
+  if (name != null) item.name = String(name).trim();
+  if (price != null) item.price = Number(price);
+
+  const cleanLines = (Array.isArray(lines) ? lines : [])
+    .filter((l) => l?.ingredientId && Number(l.quantity) > 0)
+    .map((l) => ({
+      ingredientId: l.ingredientId,
+      quantity: Number(l.quantity),
+      unit: l.unit || undefined,
+    }));
+
+  if (!cleanLines.length) return res.status(400).json({ error: 'La receta necesita al menos un insumo' });
+
+  const cleanOperating = (Array.isArray(operatingCosts) ? operatingCosts : [])
+    .filter((l) => l?.name?.trim() && Number(l.value) > 0)
+    .map((l) => ({
+      name: String(l.name).trim(),
+      mode: l.mode === 'percent' ? 'percent' : 'fixed',
+      value: Number(l.value) || 0,
+    }));
+
+  const ings = await Ingredient.find({
+    _id: { $in: cleanLines.map((l) => l.ingredientId) },
+    organizationId: req.user.organizationId,
+    active: { $ne: false },
+  });
+  const byId = Object.fromEntries(ings.map((i) => [String(i._id), i]));
+
+  let ingredientCost = 0;
+  for (const line of cleanLines) {
+    const ing = byId[String(line.ingredientId)];
+    if (!ing) return res.status(400).json({ error: 'Insumo de receta inválido' });
+    if (!line.unit) line.unit = ing.unit;
+    ingredientCost += recipeLineCost(line.quantity, line.unit, ing);
+  }
+  ingredientCost = ingredientCost / (Number(portions) || 1);
+
+  if (item.recipeId) {
+    await Recipe.findOneAndUpdate(
+      { _id: item.recipeId, organizationId: req.user.organizationId },
+      { name: item.name, portions: Number(portions) || 1, lines: cleanLines }
+    );
+  } else {
+    const recipe = await Recipe.create({
+      organizationId: req.user.organizationId,
+      name: item.name,
+      portions: Number(portions) || 1,
+      lines: cleanLines,
+    });
+    item.recipeId = recipe._id;
+  }
+
+  item.ingredientCost = Math.round(ingredientCost);
+  item.operatingCosts = cleanOperating;
+  item.cost = Math.round(totalDishCost(ingredientCost, cleanOperating));
+  await item.save();
+
+  const populated = await MenuItem.findById(item._id)
+    .populate('categoryId', 'name color')
+    .populate({
+      path: 'recipeId',
+      populate: { path: 'lines.ingredientId', select: 'name unit costPerUnit' },
+    });
+  res.json(populated);
+});
+
 router.post('/quick/tables', async (req, res) => {
   const restaurantId = restaurantScope(req);
   if (!restaurantId) return res.status(400).json({ error: 'Restaurante requerido' });

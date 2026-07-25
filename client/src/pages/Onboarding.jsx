@@ -38,8 +38,7 @@ export default function Onboarding() {
   const [stockEditDraft, setStockEditDraft] = useState({ onHand: '' });
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [categoryEditDraft, setCategoryEditDraft] = useState({ name: '', color: '#00a8ff' });
-  const [editingMenuId, setEditingMenuId] = useState(null);
-  const [menuEditDraft, setMenuEditDraft] = useState({ name: '', price: '' });
+  const [editingDishId, setEditingDishId] = useState(null);
   const [editingTableId, setEditingTableId] = useState(null);
   const [tableEditDraft, setTableEditDraft] = useState({ name: '', seats: '4', zone: 'Salón' });
   const [editingStaffId, setEditingStaffId] = useState(null);
@@ -379,6 +378,55 @@ export default function Onboarding() {
     }
   };
 
+  const resetMenuForm = (keepCategory = true) => {
+    setMenuForm((f) => ({
+      name: '',
+      price: '',
+      categoryId: keepCategory ? (f.categoryId || categories[0]?._id || '') : (categories[0]?._id || ''),
+    }));
+    setRecipeLines([]);
+    setOperatingLines([]);
+    setEditingRecipeKey(null);
+    setEditingOpKey(null);
+    setEditingDishId(null);
+    setRecipeDraft({
+      ingredientId: ingredients[0]?._id || '',
+      quantity: '',
+      unit: ingredients[0]?.unit || 'kg',
+    });
+    setOperatingDraft({ name: '', mode: 'fixed', value: '' });
+  };
+
+  const beginEditDish = (item) => {
+    const lines = item.recipeId?.lines || [];
+    setEditingDishId(item._id);
+    setMenuForm({
+      name: item.name || '',
+      price: String(item.price ?? ''),
+      categoryId: item.categoryId?._id || item.categoryId || categories[0]?._id || '',
+    });
+    setRecipeLines(
+      lines.map((l, idx) => ({
+        key: `edit-${item._id}-${idx}-${l.ingredientId?._id || l.ingredientId}`,
+        ingredientId: String(l.ingredientId?._id || l.ingredientId),
+        quantity: Number(l.quantity) || 0,
+        unit: l.unit || l.ingredientId?.unit || 'kg',
+      }))
+    );
+    setOperatingLines(
+      (item.operatingCosts || []).map((l, idx) => ({
+        key: `op-edit-${item._id}-${idx}`,
+        name: l.name,
+        mode: l.mode === 'percent' ? 'percent' : 'fixed',
+        value: Number(l.value) || 0,
+      }))
+    );
+    setEditingRecipeKey(null);
+    setEditingOpKey(null);
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const submitMenu = async (e) => {
     e.preventDefault();
     if (!menuForm.categoryId) {
@@ -391,32 +439,34 @@ export default function Onboarding() {
     }
     setBusy(true);
     setError('');
+    const payload = {
+      name: menuForm.name,
+      price: Number(menuForm.price),
+      categoryId: menuForm.categoryId,
+      lines: recipeLines.map((l) => ({
+        ingredientId: l.ingredientId,
+        quantity: Number(l.quantity),
+        unit: l.unit,
+      })),
+      operatingCosts: operatingLines.map((l) => ({
+        name: l.name,
+        mode: l.mode,
+        value: Number(l.value),
+      })),
+    };
     try {
-      await api('/api/onboarding/quick/menu-item', {
-        method: 'POST',
-        body: {
-          name: menuForm.name,
-          price: Number(menuForm.price),
-          categoryId: menuForm.categoryId,
-          lines: recipeLines.map((l) => ({
-            ingredientId: l.ingredientId,
-            quantity: Number(l.quantity),
-            unit: l.unit,
-          })),
-          operatingCosts: operatingLines.map((l) => ({
-            name: l.name,
-            mode: l.mode,
-            value: Number(l.value),
-          })),
-        },
-      });
-      setMenuForm((f) => ({ name: '', price: '', categoryId: f.categoryId }));
-      setRecipeLines([]);
-      setOperatingLines([]);
-      setEditingRecipeKey(null);
-      setEditingOpKey(null);
-      setRecipeDraft({ ingredientId: ingredients[0]?._id || '', quantity: '', unit: ingredients[0]?.unit || 'kg' });
-      setOperatingDraft({ name: '', mode: 'fixed', value: '' });
+      if (editingDishId) {
+        await api(`/api/onboarding/quick/menu-item/${editingDishId}`, {
+          method: 'PATCH',
+          body: payload,
+        });
+      } else {
+        await api('/api/onboarding/quick/menu-item', {
+          method: 'POST',
+          body: payload,
+        });
+      }
+      resetMenuForm(true);
       await afterMutation();
     } catch (err) {
       setError(err.message);
@@ -517,30 +567,13 @@ export default function Onboarding() {
     setEditingOpKey(null);
   };
 
-  const saveMenu = async (id) => {
-    setBusy(true);
-    setError('');
-    try {
-      await api(`/api/menu/items/${id}`, {
-        method: 'PATCH',
-        body: { name: menuEditDraft.name.trim(), price: Number(menuEditDraft.price) || 0 },
-      });
-      setEditingMenuId(null);
-      await afterMutation();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const removeMenu = async (id) => {
     if (!confirm('¿Quitar este plato?')) return;
     setBusy(true);
     setError('');
     try {
       await api(`/api/menu/items/${id}`, { method: 'PATCH', body: { available: false } });
-      setEditingMenuId(null);
+      if (editingDishId === id) resetMenuForm(true);
       await afterMutation();
     } catch (err) {
       setError(err.message);
@@ -1388,7 +1421,21 @@ export default function Onboarding() {
                     </table>
                   </div>
 
-                  <button disabled={busy || !recipeLines.length}>{busy ? 'Guardando…' : 'Agregar plato'}</button>
+                  <div className="row" style={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <button disabled={busy || !recipeLines.length}>
+                      {busy ? 'Guardando…' : editingDishId ? 'Guardar cambios del plato' : 'Agregar plato'}
+                    </button>
+                    {editingDishId && (
+                      <button type="button" className="ghost" disabled={busy} onClick={() => resetMenuForm(true)}>
+                        Cancelar edición
+                      </button>
+                    )}
+                  </div>
+                  {editingDishId && (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Estás editando un plato existente: receta, costos operativos, precio y categoría.
+                    </p>
+                  )}
                 </form>
               )}
               <div>
@@ -1411,37 +1458,22 @@ export default function Onboarding() {
                         const recipeLabel = lines.length
                           ? lines.map((l) => `${l.quantity} ${l.unit || l.ingredientId?.unit || ''} ${l.ingredientId?.name || ''}`.trim()).join(' · ')
                           : 'Sin receta';
+                        const opLabel = (item.operatingCosts || []).length
+                          ? ` · ${(item.operatingCosts || []).map((o) => o.name).join(', ')}`
+                          : '';
                         return (
-                          <tr key={item._id}>
-                            {editingMenuId === item._id ? (
-                              <>
-                                <td><input value={menuEditDraft.name} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, name: e.target.value })} /></td>
-                                <td>{item.categoryId?.name || '—'}</td>
-                                <td><input type="number" min="0" value={menuEditDraft.price} onChange={(e) => setMenuEditDraft({ ...menuEditDraft, price: e.target.value })} /></td>
-                                <td className="mono">{money(item.cost)}</td>
-                                <td className="muted" style={{ fontSize: '0.85rem' }}>{recipeLabel}</td>
-                                <td>
-                                  <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                    <button type="button" disabled={busy} onClick={() => saveMenu(item._id)}>Guardar</button>
-                                    <button type="button" className="ghost" disabled={busy} onClick={() => setEditingMenuId(null)}>Cancelar</button>
-                                  </div>
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                <td>{item.name}</td>
-                                <td>{item.categoryId?.name || '—'}</td>
-                                <td className="mono">{money(item.price)}</td>
-                                <td className="mono">{money(item.cost)}</td>
-                                <td className="muted" style={{ fontSize: '0.85rem', maxWidth: 280 }}>{recipeLabel}</td>
-                                <td>
-                                  <div className="row" style={{ justifyContent: 'flex-end' }}>
-                                    <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingMenuId(item._id); setMenuEditDraft({ name: item.name, price: String(item.price ?? '') }); }}>Editar</button>
-                                    <button type="button" className="ghost" disabled={busy} onClick={() => removeMenu(item._id)}>Quitar</button>
-                                  </div>
-                                </td>
-                              </>
-                            )}
+                          <tr key={item._id} style={editingDishId === item._id ? { outline: '1px solid #00a8ff' } : undefined}>
+                            <td>{item.name}{editingDishId === item._id ? ' (editando)' : ''}</td>
+                            <td>{item.categoryId?.name || '—'}</td>
+                            <td className="mono">{money(item.price)}</td>
+                            <td className="mono">{money(item.cost)}</td>
+                            <td className="muted" style={{ fontSize: '0.85rem', maxWidth: 280 }}>{recipeLabel}{opLabel}</td>
+                            <td>
+                              <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                <button type="button" className="ghost" disabled={busy} onClick={() => beginEditDish(item)}>Editar</button>
+                                <button type="button" className="ghost" disabled={busy} onClick={() => removeMenu(item._id)}>Quitar</button>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
