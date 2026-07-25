@@ -4,9 +4,11 @@ import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import SearchableSelect from '../components/SearchableSelect';
 import { compatibleUnits, recipeLineCost } from '../utils/units';
+import { operatingLineAmount, sumOperatingCosts, totalDishCost } from '../utils/operatingCosts';
 
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
 const CAT_COLORS = ['#00a8ff', '#38bdf8', '#67e8f9', '#22d3ee', '#a3e635', '#c4b5fd', '#fbbf24', '#fb7185'];
+const OP_COST_SUGGESTIONS = ['Nómina', 'Servicios', 'Merma', 'Empaque', 'Delivery', 'Arriendo'];
 const STAFF_ROLES = [
   { value: 'waiter', label: 'Mesero' },
   { value: 'cashier', label: 'Caja' },
@@ -53,6 +55,10 @@ export default function Onboarding() {
   const [recipeDraft, setRecipeDraft] = useState({ ingredientId: '', quantity: '', unit: 'kg' });
   const [editingRecipeKey, setEditingRecipeKey] = useState(null);
   const [recipeLineEditDraft, setRecipeLineEditDraft] = useState({ quantity: '', unit: 'kg' });
+  const [operatingLines, setOperatingLines] = useState([]);
+  const [operatingDraft, setOperatingDraft] = useState({ name: '', mode: 'fixed', value: '' });
+  const [editingOpKey, setEditingOpKey] = useState(null);
+  const [operatingEditDraft, setOperatingEditDraft] = useState({ name: '', mode: 'fixed', value: '' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'waiter' });
   const [restoForm, setRestoForm] = useState({ name: '', city: '', address: '' });
@@ -131,10 +137,42 @@ export default function Onboarding() {
         cost,
       };
     });
-    const totalCost = breakdown.reduce((s, l) => s + l.cost, 0);
+    const ingredientCost = breakdown.reduce((s, l) => s + l.cost, 0);
+    const opBreakdown = operatingLines.map((line) => {
+      const draft = editingOpKey === line.key ? operatingEditDraft : line;
+      const amount = operatingLineAmount(ingredientCost, draft);
+      return {
+        ...line,
+        name: draft.name,
+        mode: draft.mode,
+        value: Number(draft.value) || 0,
+        amount,
+      };
+    });
+    const operatingTotal = sumOperatingCosts(
+      ingredientCost,
+      opBreakdown.map((l) => ({ mode: l.mode, value: l.value }))
+    );
+    const totalCost = totalDishCost(ingredientCost, opBreakdown.map((l) => ({ mode: l.mode, value: l.value })));
     const price = Number(menuForm.price) || 0;
-    return { breakdown, totalCost, margin: price - totalCost };
-  }, [recipeLines, ingredientsById, menuForm.price, editingRecipeKey, recipeLineEditDraft]);
+    return {
+      breakdown,
+      ingredientCost,
+      opBreakdown,
+      operatingTotal,
+      totalCost,
+      margin: price - totalCost,
+    };
+  }, [
+    recipeLines,
+    ingredientsById,
+    menuForm.price,
+    editingRecipeKey,
+    recipeLineEditDraft,
+    operatingLines,
+    editingOpKey,
+    operatingEditDraft,
+  ]);
 
 
   const afterMutation = async (refreshSession = false) => {
@@ -365,12 +403,20 @@ export default function Onboarding() {
             quantity: Number(l.quantity),
             unit: l.unit,
           })),
+          operatingCosts: operatingLines.map((l) => ({
+            name: l.name,
+            mode: l.mode,
+            value: Number(l.value),
+          })),
         },
       });
       setMenuForm((f) => ({ name: '', price: '', categoryId: f.categoryId }));
       setRecipeLines([]);
+      setOperatingLines([]);
       setEditingRecipeKey(null);
+      setEditingOpKey(null);
       setRecipeDraft({ ingredientId: ingredients[0]?._id || '', quantity: '', unit: ingredients[0]?.unit || 'kg' });
+      setOperatingDraft({ name: '', mode: 'fixed', value: '' });
       await afterMutation();
     } catch (err) {
       setError(err.message);
@@ -419,6 +465,56 @@ export default function Onboarding() {
       rows.map((r) => (r.key === key ? { ...r, quantity: qty, unit: recipeLineEditDraft.unit } : r))
     );
     setEditingRecipeKey(null);
+  };
+
+  const addOperatingLine = () => {
+    if (!operatingDraft.name.trim() || !(Number(operatingDraft.value) > 0)) {
+      setError('Indica nombre y un valor mayor a 0 para el costo operativo.');
+      return;
+    }
+    setError('');
+    setOperatingLines((rows) => [
+      ...rows,
+      {
+        key: `${Date.now()}-op`,
+        name: operatingDraft.name.trim(),
+        mode: operatingDraft.mode,
+        value: Number(operatingDraft.value),
+      },
+    ]);
+    setOperatingDraft({ name: '', mode: operatingDraft.mode, value: '' });
+  };
+
+  const removeOperatingLine = (key) => {
+    setOperatingLines((rows) => rows.filter((r) => r.key !== key));
+    if (editingOpKey === key) setEditingOpKey(null);
+  };
+
+  const startEditOperatingLine = (line) => {
+    setEditingOpKey(line.key);
+    setOperatingEditDraft({ name: line.name, mode: line.mode, value: String(line.value) });
+    setError('');
+  };
+
+  const saveOperatingLine = (key) => {
+    if (!operatingEditDraft.name.trim() || !(Number(operatingEditDraft.value) > 0)) {
+      setError('Nombre y valor del costo operativo son requeridos.');
+      return;
+    }
+    setError('');
+    setOperatingLines((rows) =>
+      rows.map((r) =>
+        r.key === key
+          ? {
+              ...r,
+              name: operatingEditDraft.name.trim(),
+              mode: operatingEditDraft.mode,
+              value: Number(operatingEditDraft.value),
+            }
+          : r
+      )
+    );
+    setEditingOpKey(null);
   };
 
   const saveMenu = async (id) => {
@@ -1137,20 +1233,159 @@ export default function Onboarding() {
                         </tbody>
                         <tfoot>
                           <tr>
-                            <td colSpan={2} style={{ textAlign: 'right', fontWeight: 700 }}>Costo total plato</td>
-                            <td className="mono" style={{ fontWeight: 700 }}>{money(recipePreview.totalCost)}</td>
+                            <td colSpan={2} style={{ textAlign: 'right' }}>Costo insumos</td>
+                            <td className="mono">{money(recipePreview.ingredientCost)}</td>
                             <td></td>
                           </tr>
-                          {Number(menuForm.price) > 0 && (
-                            <tr>
-                              <td colSpan={2} style={{ textAlign: 'right' }}>Margen estimado</td>
-                              <td className="mono">{money(recipePreview.margin)}</td>
-                              <td></td>
-                            </tr>
-                          )}
                         </tfoot>
                       </table>
                     )}
+                  </div>
+
+                  <div className="stack" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
+                    <h3 style={{ margin: 0 }}>Costos operativos</h3>
+                    <p className="muted" style={{ margin: 0 }}>
+                      Nómina, servicios, merma, etc. Puedes usar un valor fijo (COP) o un % sobre el costo de insumos.
+                    </p>
+                    <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.75rem' }}>
+                      <label style={{ flex: 2, minWidth: 160 }}>
+                        Concepto
+                        <input
+                          list="op-cost-suggestions"
+                          value={operatingDraft.name}
+                          onChange={(e) => setOperatingDraft({ ...operatingDraft, name: e.target.value })}
+                          placeholder="Ej. Merma, Nómina…"
+                          disabled={busy}
+                        />
+                        <datalist id="op-cost-suggestions">
+                          {OP_COST_SUGGESTIONS.map((n) => (
+                            <option key={n} value={n} />
+                          ))}
+                        </datalist>
+                      </label>
+                      <label style={{ flex: 1, minWidth: 140 }}>
+                        Tipo
+                        <select
+                          value={operatingDraft.mode}
+                          onChange={(e) => setOperatingDraft({ ...operatingDraft, mode: e.target.value })}
+                          disabled={busy}
+                        >
+                          <option value="fixed">Valor fijo (COP)</option>
+                          <option value="percent">% del costo insumos</option>
+                        </select>
+                      </label>
+                      <label style={{ flex: 1, minWidth: 110 }}>
+                        {operatingDraft.mode === 'percent' ? 'Porcentaje' : 'Valor (COP)'}
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={operatingDraft.value}
+                          onChange={(e) => setOperatingDraft({ ...operatingDraft, value: e.target.value })}
+                          placeholder={operatingDraft.mode === 'percent' ? '10' : '1500'}
+                          disabled={busy}
+                        />
+                      </label>
+                      <button type="button" className="ghost" disabled={busy} onClick={addOperatingLine}>
+                        Agregar costo
+                      </button>
+                    </div>
+
+                    {!recipePreview.opBreakdown.length ? (
+                      <p className="muted">Opcional: aún no hay costos operativos.</p>
+                    ) : (
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Concepto</th>
+                            <th>Tipo</th>
+                            <th>Valor</th>
+                            <th>Costo</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recipePreview.opBreakdown.map((line) => (
+                            <tr key={line.key}>
+                              {editingOpKey === line.key ? (
+                                <>
+                                  <td>
+                                    <input
+                                      value={operatingEditDraft.name}
+                                      onChange={(e) => setOperatingEditDraft({ ...operatingEditDraft, name: e.target.value })}
+                                    />
+                                  </td>
+                                  <td>
+                                    <select
+                                      value={operatingEditDraft.mode}
+                                      onChange={(e) => setOperatingEditDraft({ ...operatingEditDraft, mode: e.target.value })}
+                                    >
+                                      <option value="fixed">Fijo</option>
+                                      <option value="percent">%</option>
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={operatingEditDraft.value}
+                                      onChange={(e) => setOperatingEditDraft({ ...operatingEditDraft, value: e.target.value })}
+                                      style={{ width: 100 }}
+                                    />
+                                  </td>
+                                  <td className="mono">{money(line.amount)}</td>
+                                  <td>
+                                    <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                      <button type="button" disabled={busy} onClick={() => saveOperatingLine(line.key)}>Guardar</button>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => setEditingOpKey(null)}>Cancelar</button>
+                                    </div>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td>{line.name}</td>
+                                  <td>{line.mode === 'percent' ? '% insumos' : 'Fijo'}</td>
+                                  <td className="mono">
+                                    {line.mode === 'percent' ? `${line.value}%` : money(line.value)}
+                                  </td>
+                                  <td className="mono">{money(line.amount)}</td>
+                                  <td>
+                                    <div className="row" style={{ justifyContent: 'flex-end' }}>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => startEditOperatingLine(line)}>Editar</button>
+                                      <button type="button" className="ghost" disabled={busy} onClick={() => removeOperatingLine(line.key)}>Quitar</button>
+                                    </div>
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    <table className="table">
+                      <tbody>
+                        <tr>
+                          <td style={{ textAlign: 'right' }}>Costo insumos</td>
+                          <td className="mono" style={{ width: 140 }}>{money(recipePreview.ingredientCost)}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ textAlign: 'right' }}>Costos operativos</td>
+                          <td className="mono">{money(recipePreview.operatingTotal)}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>Costo total plato</td>
+                          <td className="mono" style={{ fontWeight: 700 }}>{money(recipePreview.totalCost)}</td>
+                        </tr>
+                        {Number(menuForm.price) > 0 && (
+                          <tr>
+                            <td style={{ textAlign: 'right' }}>Margen estimado</td>
+                            <td className="mono">{money(recipePreview.margin)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
 
                   <button disabled={busy || !recipeLines.length}>{busy ? 'Guardando…' : 'Agregar plato'}</button>

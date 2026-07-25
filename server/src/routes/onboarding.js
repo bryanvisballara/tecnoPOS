@@ -10,6 +10,7 @@ import Table from '../models/Table.js';
 import User from '../models/User.js';
 import { auth, requireRoles, restaurantScope } from '../middleware/auth.js';
 import { recipeLineCost } from '../utils/units.js';
+import { totalDishCost } from '../utils/operatingCosts.js';
 
 const router = Router();
 router.use(auth);
@@ -282,6 +283,7 @@ router.post('/quick/menu-item', async (req, res) => {
     description,
     portions = 1,
     lines = [],
+    operatingCosts = [],
   } = req.body;
   if (!name || price == null) return res.status(400).json({ error: 'Nombre y precio requeridos' });
 
@@ -317,8 +319,16 @@ router.post('/quick/menu-item', async (req, res) => {
       unit: l.unit || undefined,
     }));
 
+  const cleanOperating = (Array.isArray(operatingCosts) ? operatingCosts : [])
+    .filter((l) => l?.name?.trim() && Number(l.value) > 0)
+    .map((l) => ({
+      name: String(l.name).trim(),
+      mode: l.mode === 'percent' ? 'percent' : 'fixed',
+      value: Number(l.value) || 0,
+    }));
+
   let recipeId;
-  let cost = 0;
+  let ingredientCost = 0;
   if (cleanLines.length) {
     const ings = await Ingredient.find({
       _id: { $in: cleanLines.map((l) => l.ingredientId) },
@@ -331,9 +341,9 @@ router.post('/quick/menu-item', async (req, res) => {
       const ing = byId[String(line.ingredientId)];
       if (!ing) return res.status(400).json({ error: 'Insumo de receta inválido' });
       if (!line.unit) line.unit = ing.unit;
-      cost += recipeLineCost(line.quantity, line.unit, ing);
+      ingredientCost += recipeLineCost(line.quantity, line.unit, ing);
     }
-    cost = cost / (Number(portions) || 1);
+    ingredientCost = ingredientCost / (Number(portions) || 1);
 
     const recipe = await Recipe.create({
       organizationId: req.user.organizationId,
@@ -344,13 +354,17 @@ router.post('/quick/menu-item', async (req, res) => {
     recipeId = recipe._id;
   }
 
+  const cost = Math.round(totalDishCost(ingredientCost, cleanOperating));
+
   const item = await MenuItem.create({
     organizationId: req.user.organizationId,
     categoryId: category._id,
     name: name.trim(),
     description: description || '',
     price: Number(price),
-    cost: Math.round(cost),
+    ingredientCost: Math.round(ingredientCost),
+    cost,
+    operatingCosts: cleanOperating,
     station,
     available: true,
     recipeId,

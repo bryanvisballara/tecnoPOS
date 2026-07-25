@@ -5,7 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import './styles/index.css';
 
-const BUILD_ID = '2026-07-25-recipe-edit-v3';
+const BUILD_ID = '2026-07-25-operating-costs-v4';
 
 async function clearStaleClient() {
   try {
