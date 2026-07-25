@@ -583,15 +583,32 @@ export default function Onboarding() {
                 <h3 style={{ margin: '0.5rem 0' }}>Stock cargado ({stockRows.length})</h3>
                 {!stockRows.length ? <p className="muted">Aún no has cargado inventario.</p> : (
                   <table className="table">
-                    <thead><tr><th>Insumo</th><th>On hand</th><th>Unidad</th><th></th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Insumo</th>
+                        <th>On hand</th>
+                        <th>Unidad</th>
+                        <th>Costo unit.</th>
+                        <th>Costo total</th>
+                        <th></th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {stockRows.map((row) => (
+                      {stockRows.map((row) => {
+                        const qty = editingStockId === row._id
+                          ? Number(stockEditDraft.onHand) || 0
+                          : Number(row.onHand) || 0;
+                        const unitCost = Number(row.ingredientId?.costPerUnit) || 0;
+                        const totalCost = qty * unitCost;
+                        return (
                         <tr key={row._id}>
                           {editingStockId === row._id ? (
                             <>
                               <td>{row.ingredientId?.name}</td>
                               <td><input type="number" min="0" step="0.01" value={stockEditDraft.onHand} onChange={(e) => setStockEditDraft({ onHand: e.target.value })} /></td>
                               <td>{row.ingredientId?.unit}</td>
+                              <td className="mono">{money(unitCost)}</td>
+                              <td className="mono">{money(totalCost)}</td>
                               <td>
                                 <div className="row" style={{ justifyContent: 'flex-end' }}>
                                   <button type="button" disabled={busy} onClick={() => saveStock(row._id)}>Guardar</button>
@@ -602,8 +619,10 @@ export default function Onboarding() {
                           ) : (
                             <>
                               <td>{row.ingredientId?.name}</td>
-                              <td className="mono">{Number(row.onHand).toFixed(2)}</td>
+                              <td className="mono">{qty.toFixed(2)}</td>
                               <td>{row.ingredientId?.unit}</td>
+                              <td className="mono">{money(unitCost)}</td>
+                              <td className="mono">{money(totalCost)}</td>
                               <td>
                                 <div className="row" style={{ justifyContent: 'flex-end' }}>
                                   <button type="button" className="ghost" disabled={busy} onClick={() => { setEditingStockId(row._id); setStockEditDraft({ onHand: String(row.onHand ?? 0) }); }}>Editar</button>
@@ -613,8 +632,21 @@ export default function Onboarding() {
                             </>
                           )}
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'right', fontWeight: 700 }}>Total inventario</td>
+                        <td className="mono" style={{ fontWeight: 700 }}>
+                          {money(stockRows.reduce((sum, row) => {
+                            const q = editingStockId === row._id ? Number(stockEditDraft.onHand) || 0 : Number(row.onHand) || 0;
+                            return sum + q * (Number(row.ingredientId?.costPerUnit) || 0);
+                          }, 0))}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
                   </table>
                 )}
               </div>
