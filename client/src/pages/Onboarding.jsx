@@ -830,7 +830,7 @@ export default function Onboarding() {
 
         <section className="panel onboarding-main">
           <h2 style={{ marginTop: 0 }}>{current?.title}</h2>
-          <p className="muted" style={{ fontSize: '0.75rem' }}>Build zones-v7</p>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>Build margin-col-v8</p>
           <p className="muted">{current?.description}</p>
           {current?.done && <div className="badge ok" style={{ marginBottom: '0.75rem' }}>Paso completado ({current.count})</div>}
           {error && <div className="error">{error}</div>}
@@ -1488,6 +1488,7 @@ export default function Onboarding() {
                         <th>Categoría</th>
                         <th>Precio</th>
                         <th>Costo</th>
+                        <th>Margen estimado</th>
                         <th>Receta</th>
                         <th></th>
                       </tr>
@@ -1501,12 +1502,14 @@ export default function Onboarding() {
                         const opLabel = (item.operatingCosts || []).length
                           ? ` · ${(item.operatingCosts || []).map((o) => o.name).join(', ')}`
                           : '';
+                        const margin = (Number(item.price) || 0) - (Number(item.cost) || 0);
                         return (
                           <tr key={item._id} style={editingDishId === item._id ? { outline: '1px solid #00a8ff' } : undefined}>
                             <td>{item.name}{editingDishId === item._id ? ' (editando)' : ''}</td>
                             <td>{item.categoryId?.name || '—'}</td>
                             <td className="mono">{money(item.price)}</td>
                             <td className="mono">{money(item.cost)}</td>
+                            <td className="mono">{money(margin)}</td>
                             <td className="muted" style={{ fontSize: '0.85rem', maxWidth: 280 }}>{recipeLabel}{opLabel}</td>
                             <td>
                               <div className="row" style={{ justifyContent: 'flex-end' }}>
