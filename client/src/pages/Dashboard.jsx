@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import { Link, Navigate } from 'react-router-dom';
 import { api, money } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {
-  const { restaurantId, user } = useAuth();
+  const { restaurantId, user, restaurants, organization } = useAuth();
   const [scope, setScope] = useState(user.role === 'owner' ? 'chain' : 'restaurant');
   const [data, setData] = useState(null);
+  const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -15,6 +17,10 @@ export default function Dashboard() {
         const q = scope === 'restaurant' ? `?restaurantId=${restaurantId}` : '';
         const res = await api(`/api/dashboard/overview${q}`, { restaurantId });
         if (alive) setData(res);
+        if (user.role === 'owner' || user.role === 'manager') {
+          const ob = await api(`/api/onboarding/status?restaurantId=${restaurantId}`, { restaurantId });
+          if (alive) setOnboarding(ob);
+        }
       } catch (err) {
         if (alive) setError(err.message);
       }
@@ -24,14 +30,40 @@ export default function Dashboard() {
     return () => { alive = false; clearInterval(t); };
   }, [scope, restaurantId, user.role]);
 
+  if (
+    user.role === 'owner' &&
+    onboarding?.needsOnboarding &&
+    !organization?.onboardingCompleted &&
+    !organization?.onboardingSkipped
+  ) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="muted">Cargando KPIs…</div>;
 
   const max = Math.max(...data.series.map((s) => s.revenue), 1);
   const c = data.consolidated;
+  const sedeCount = data.locations?.length || restaurants.length || 1;
+  const sedeLabel =
+    data.scope === 'chain'
+      ? `${sedeCount} sede${sedeCount === 1 ? '' : 's'}`
+      : 'Individual';
 
   return (
     <div className="stack">
+      {onboarding && !onboarding.requiredDone && !onboarding.onboardingCompleted && (
+        <div className="panel onboarding-banner">
+          <div>
+            <strong>Configura tu negocio</strong>
+            <div className="muted">
+              Te faltan {onboarding.progress.requiredTotal - onboarding.progress.requiredDone} pasos esenciales para operar (insumos, inventario, menú, mesas y equipo).
+            </div>
+          </div>
+          <Link to="/onboarding" className="auth-cta">Continuar configuración</Link>
+        </div>
+      )}
+
       <div className="row">
         {user.role === 'owner' && (
           <>
@@ -39,7 +71,7 @@ export default function Dashboard() {
             <button className={scope === 'restaurant' ? '' : 'ghost'} onClick={() => setScope('restaurant')}>Sede actual</button>
           </>
         )}
-        <span className="badge">{data.scope === 'chain' ? '5 sedes' : 'Individual'}</span>
+        <span className="badge">{sedeLabel}</span>
       </div>
 
       <div className="grid kpi">

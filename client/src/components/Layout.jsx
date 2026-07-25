@@ -2,6 +2,7 @@ import { NavLink, Outlet, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const NAV = [
+  { to: '/onboarding', label: 'Configurar', roles: ['owner', 'manager'] },
   { to: '/dashboard', label: 'KPIs', roles: ['owner', 'manager', 'cashier'] },
   { to: '/tables', label: 'Mesas', roles: ['owner', 'manager', 'waiter', 'cashier'] },
   { to: '/pos', label: 'POS', roles: ['owner', 'manager', 'waiter', 'cashier'] },

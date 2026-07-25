@@ -20,6 +20,7 @@ import kitchenRoutes from './routes/kitchen.js';
 import cashRoutes from './routes/cash.js';
 import customerRoutes from './routes/customers.js';
 import dashboardRoutes from './routes/dashboard.js';
+import onboardingRoutes from './routes/onboarding.js';
 import { seedDatabase } from './seed/seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,7 @@ app.use('/api/kitchen', kitchenRoutes);
 app.use('/api/cash', cashRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 const clientDist = path.join(__dirname, '../../client/dist');
 const indexHtml = path.join(clientDist, 'index.html');

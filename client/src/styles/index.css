@@ -274,6 +274,88 @@ input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shado
   text-align: center;
   margin-bottom: 0.75rem;
 }
+
+.onboarding-page {
+  min-height: 100vh;
+  padding: 1.25rem;
+  display: grid;
+  place-items: center;
+}
+.onboarding-shell {
+  width: min(1100px, 100%);
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 1rem;
+  align-items: stretch;
+}
+.onboarding-aside {
+  display: flex;
+  flex-direction: column;
+  min-height: 70vh;
+}
+.onboarding-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+  margin-bottom: 0.45rem;
+}
+.onboarding-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--blue-2));
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+.onboarding-steps {
+  display: grid;
+  gap: 0.4rem;
+}
+.onboarding-step {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  text-align: left;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  padding: 0.65rem 0.75rem;
+}
+.onboarding-step strong { display: block; color: var(--text); font-size: 0.92rem; }
+.onboarding-step em { font-style: normal; color: var(--blue-2); font-size: 0.75rem; }
+.onboarding-step.active {
+  background: rgba(0, 168, 255, 0.12);
+  color: var(--text);
+  border-color: rgba(0, 168, 255, 0.35);
+}
+.onboarding-step.done .onboarding-step-num {
+  background: rgba(52, 211, 153, 0.2);
+  color: var(--ok);
+}
+.onboarding-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 168, 255, 0.15);
+  color: var(--blue-2);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.onboarding-main { min-height: 70vh; }
+.onboarding-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .onboarding-shell { grid-template-columns: 1fr; }
+  .onboarding-aside, .onboarding-main { min-height: auto; }
+}
 @media (max-width: 560px) {
   .phone-row { grid-template-columns: 1fr; }
 }

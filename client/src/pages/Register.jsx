@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { COUNTRIES, getCountry } from '../data/countries';
 
 export default function Register() {
-  const { applySession, user, homeForRole, loading } = useAuth();
+  const { applySession, user, loading } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '',
@@ -26,7 +26,7 @@ export default function Register() {
 
   const country = useMemo(() => getCountry(form.phoneCountry), [form.phoneCountry]);
 
-  if (!loading && user) return <Navigate to={homeForRole(user.role)} replace />;
+  if (!loading && user) return <Navigate to="/onboarding" replace />;
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -67,7 +67,7 @@ export default function Register() {
         body: { email: form.email, code },
       });
       applySession(data);
-      navigate(homeForRole(data.user.role));
+      navigate('/onboarding');
     } catch (err) {
       setModalError(err.message);
     } finally {

@@ -11,6 +11,8 @@ const organizationSchema = new mongoose.Schema(
       taxRate: { type: Number, default: 0.08 },
       timezone: { type: String, default: 'America/Bogota' },
     },
+    onboardingCompleted: { type: Boolean, default: false },
+    onboardingSkipped: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
