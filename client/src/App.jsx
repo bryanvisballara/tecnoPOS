@@ -16,6 +16,7 @@ import Recipes from './pages/Recipes';
 import MenuPage from './pages/Menu';
 import Customers from './pages/Customers';
 import Staff from './pages/Staff';
+import AcceptInvite from './pages/AcceptInvite';
 import { useAuth } from './context/AuthContext';
 
 function Private({ children }) {
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/invite/:token" element={<AcceptInvite />} />
       <Route
         path="/onboarding"
         element={

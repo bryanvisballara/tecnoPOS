@@ -33,6 +33,7 @@ export default function Onboarding() {
   const [menuItems, setMenuItems] = useState([]);
   const [tables, setTables] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [invites, setInvites] = useState([]);
 
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: '', unit: 'kg', costPerUnit: '' });
@@ -62,19 +63,20 @@ export default function Onboarding() {
   const [operatingEditDraft, setOperatingEditDraft] = useState({ name: '', mode: 'fixed', value: '' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
   const [zoneDraft, setZoneDraft] = useState('');
-  const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'waiter' });
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'waiter' });
   const [restoForm, setRestoForm] = useState({ name: '', city: '', address: '' });
 
   const reload = useCallback(async () => {
     const data = await api(`/api/onboarding/status?restaurantId=${restaurantId}`, { restaurantId });
     setStatus(data);
-    const [ings, stock, cats, items, tableList, users] = await Promise.all([
+    const [ings, stock, cats, items, tableList, users, pendingInvites] = await Promise.all([
       api('/api/menu/ingredients'),
       api(`/api/inventory/stock?restaurantId=${restaurantId}`, { restaurantId }).catch(() => []),
       api('/api/menu/categories').catch(() => data.categories || []),
       api('/api/menu/items').catch(() => []),
       api(`/api/tables?restaurantId=${restaurantId}`, { restaurantId }).catch(() => []),
       api('/api/users').catch(() => []),
+      api('/api/invites', { restaurantId }).catch(() => []),
     ]);
     setIngredients(ings);
     setStockRows(stock);
@@ -82,6 +84,7 @@ export default function Onboarding() {
     setMenuItems(items);
     setTables(tableList);
     setStaff(users.filter((u) => u.role !== 'owner'));
+    setInvites(pendingInvites);
     setStockForm((f) => ({ ...f, ingredientId: f.ingredientId || ings[0]?._id || '' }));
     setMenuForm((f) => ({ ...f, categoryId: f.categoryId || cats[0]?._id || '' }));
     setRecipeDraft((d) => ({
@@ -689,12 +692,55 @@ export default function Onboarding() {
     setBusy(true);
     setError('');
     try {
-      await api('/api/onboarding/quick/staff', {
+      const data = await api('/api/invites', {
         method: 'POST',
         restaurantId,
-        body: { ...staffForm, restaurantId },
+        body: {
+          name: staffForm.name,
+          email: staffForm.email,
+          role: staffForm.role,
+          restaurantId,
+        },
       });
-      setStaffForm({ name: '', email: '', password: '', role: 'waiter' });
+      setStaffForm({ name: '', email: '', role: staffForm.role });
+      await afterMutation();
+      alert(data.message || 'Invitación enviada');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendInvite = async (invite) => {
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api('/api/invites', {
+        method: 'POST',
+        restaurantId,
+        body: {
+          name: invite.name,
+          email: invite.email,
+          role: invite.role,
+          restaurantId,
+        },
+      });
+      await afterMutation();
+      alert(data.message || 'Invitación reenviada');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeInvite = async (id) => {
+    if (!confirm('¿Cancelar esta invitación?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/api/invites/${id}`, { method: 'DELETE' });
       await afterMutation();
     } catch (err) {
       setError(err.message);
@@ -1620,19 +1666,49 @@ export default function Onboarding() {
           {stepId === 'staff' && (
             <div className="stack">
               <form className="stack" onSubmit={submitStaff}>
-                <label>Nombre<input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required /></label>
-                <label>Email<input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} required /></label>
-                <label>Contraseña temporal<input type="password" value={staffForm.password} onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })} minLength={6} required /></label>
+                <p className="muted" style={{ margin: 0 }}>
+                  Enviamos un correo de invitación. La persona acepta el enlace, crea su contraseña y recién entonces entra al equipo.
+                </p>
+                <label>Nombre<input value={staffForm.name} onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })} required placeholder="Ej. Juan Pérez" /></label>
+                <label>Email<input type="email" value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} required placeholder="correo@ejemplo.com" /></label>
                 <label>Rol
                   <select value={staffForm.role} onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}>
                     {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </label>
-                <button disabled={busy}>{busy ? 'Creando…' : 'Crear usuario'}</button>
+                <button disabled={busy}>{busy ? 'Enviando…' : 'Enviar invitación'}</button>
               </form>
+
               <div>
-                <h3 style={{ margin: '0.5rem 0' }}>Equipo agregado ({visibleStaff.length})</h3>
-                {!visibleStaff.length ? <p className="muted">Aún no has creado usuarios operativos.</p> : (
+                <h3 style={{ margin: '0.5rem 0' }}>Invitaciones pendientes ({invites.length})</h3>
+                {!invites.length ? (
+                  <p className="muted">No hay invitaciones pendientes.</p>
+                ) : (
+                  <table className="table">
+                    <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                      {invites.map((inv) => (
+                        <tr key={inv._id}>
+                          <td>{inv.name || '—'}</td>
+                          <td>{inv.email}</td>
+                          <td><span className="badge">{ROLE_LABEL[inv.role] || inv.role}</span></td>
+                          <td><span className="badge ok">Pendiente</span></td>
+                          <td>
+                            <div className="row" style={{ justifyContent: 'flex-end' }}>
+                              <button type="button" className="ghost" disabled={busy} onClick={() => resendInvite(inv)}>Reenviar</button>
+                              <button type="button" className="ghost" disabled={busy} onClick={() => revokeInvite(inv._id)}>Cancelar</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div>
+                <h3 style={{ margin: '0.5rem 0' }}>Equipo activo ({visibleStaff.length})</h3>
+                {!visibleStaff.length ? <p className="muted">Aún nadie ha aceptado una invitación.</p> : (
                   <table className="table">
                     <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th></th></tr></thead>
                     <tbody>
@@ -1673,7 +1749,7 @@ export default function Onboarding() {
                   </table>
                 )}
               </div>
-              <ContinueBtn ready={visibleStaff.length > 0} />
+              <ContinueBtn ready={visibleStaff.length > 0 || invites.length > 0} />
             </div>
           )}
 

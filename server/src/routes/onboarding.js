@@ -8,6 +8,7 @@ import Recipe from '../models/Recipe.js';
 import Category from '../models/Category.js';
 import Table from '../models/Table.js';
 import User from '../models/User.js';
+import Invitation from '../models/Invitation.js';
 import { auth, requireRoles, restaurantScope } from '../middleware/auth.js';
 import { recipeLineCost } from '../utils/units.js';
 import { totalDishCost } from '../utils/operatingCosts.js';
@@ -29,6 +30,7 @@ router.get('/status', async (req, res) => {
       menuCount,
       tableCount,
       staffCount,
+      inviteCount,
       restaurantCount,
       categories,
     ] = await Promise.all([
@@ -42,9 +44,16 @@ router.get('/status', async (req, res) => {
         ? Table.countDocuments({ organizationId: orgId, restaurantId })
         : Table.countDocuments({ organizationId: orgId }),
       User.countDocuments({ organizationId: orgId, role: { $ne: 'owner' }, active: { $ne: false } }),
+      Invitation.countDocuments({
+        organizationId: orgId,
+        status: 'pending',
+        expiresAt: { $gt: new Date() },
+      }),
       Restaurant.countDocuments({ organizationId: orgId, active: true }),
       Category.find({ organizationId: orgId, active: true }).sort({ sortOrder: 1 }),
     ]);
+
+    const teamCount = staffCount + inviteCount;
 
     const steps = [
       {
@@ -90,10 +99,10 @@ router.get('/status', async (req, res) => {
       {
         id: 'staff',
         title: 'Equipo operativo',
-        description: 'Crea usuarios de mesero, caja y cocina para tu operación diaria.',
-        done: staffCount > 0,
+        description: 'Invita a meseros, caja y cocina. Ellos aceptan por correo y crean su acceso.',
+        done: teamCount > 0,
         required: true,
-        count: staffCount,
+        count: teamCount,
       },
       {
         id: 'locations',
@@ -568,31 +577,9 @@ router.delete('/quick/tables/:id', async (req, res) => {
 });
 
 router.post('/quick/staff', async (req, res) => {
-  const restaurantId = restaurantScope(req);
-  const { name, email, password, role } = req.body;
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: 'Nombre, email, contraseña y rol son requeridos' });
-  }
-  if (!['waiter', 'cashier', 'kitchen', 'manager'].includes(role)) {
-    return res.status(400).json({ error: 'Rol inválido' });
-  }
-  const exists = await User.findOne({ email: email.toLowerCase().trim() });
-  if (exists) return res.status(409).json({ error: 'Ese email ya está en uso' });
-
-  const user = await User.create({
-    organizationId: req.user.organizationId,
-    restaurantIds: restaurantId ? [restaurantId] : req.user.restaurantIds,
-    name: name.trim(),
-    email: email.toLowerCase().trim(),
-    password,
-    role,
-  });
-
-  res.status(201).json({
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
+  // Compat: redirect to invite flow (no password create)
+  return res.status(400).json({
+    error: 'Usa invitaciones por correo. Envía la invitación desde Equipo operativo.',
   });
 });
 
