@@ -830,7 +830,7 @@ export default function Onboarding() {
 
         <section className="panel onboarding-main">
           <h2 style={{ marginTop: 0 }}>{current?.title}</h2>
-          <p className="muted" style={{ fontSize: '0.75rem' }}>Build margin-col-v8</p>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>Si no ves cambios recientes, abre en ventana de incógnito o borra datos del sitio.</p>
           <p className="muted">{current?.description}</p>
           {current?.done && <div className="badge ok" style={{ marginBottom: '0.75rem' }}>Paso completado ({current.count})</div>}
           {error && <div className="error">{error}</div>}

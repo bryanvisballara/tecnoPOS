@@ -7,6 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="description" content="TecnoPOS — Tu negocio, en control. POS multi-sede para restaurantes." />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -14,6 +17,40 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
     <title>TecnoPOS</title>
+    <script>
+      // Bust stale browser caches after each deploy (runs before the app module).
+      (function () {
+        var KEY = 'tp_build';
+        fetch('/build-id.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.id) return;
+            var prev = localStorage.getItem(KEY);
+            localStorage.setItem(KEY, data.id);
+            if (prev && prev !== data.id) {
+              var finish = function () {
+                var u = new URL(window.location.href);
+                u.searchParams.delete('_b');
+                u.searchParams.set('fresh', data.id);
+                window.location.replace(u.toString());
+              };
+              var tasks = [];
+              if (window.caches) {
+                tasks.push(caches.keys().then(function (keys) {
+                  return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                }));
+              }
+              if (navigator.serviceWorker) {
+                tasks.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+                  return Promise.all(regs.map(function (r) { return r.unregister(); }));
+                }));
+              }
+              Promise.all(tasks).then(finish).catch(finish);
+            }
+          })
+          .catch(function () {});
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

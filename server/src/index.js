@@ -41,6 +41,17 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, name: 'TecnoPOS', slogan: 'TU NEGOCIO, EN CONTROL', time: new Date().toISOString() });
 });
 
+app.get('/api/build', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const buildFile = path.join(__dirname, '../../client/dist/build-id.json');
+  if (!fs.existsSync(buildFile)) return res.json({ id: 'unknown' });
+  try {
+    res.json(JSON.parse(fs.readFileSync(buildFile, 'utf8')));
+  } catch {
+    res.json({ id: 'unknown' });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/users', userRoutes);
@@ -58,14 +69,12 @@ const clientDist = path.join(__dirname, '../../client/dist');
 const indexHtml = path.join(clientDist, 'index.html');
 app.use(
   express.static(clientDist, {
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-      } else if (/\.(js|css)$/.test(filePath)) {
-        // Hashed assets: short cache so stale SPA shells recover faster after deploys
-        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
-      }
+    etag: false,
+    lastModified: false,
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
     },
   })
 );
@@ -73,8 +82,9 @@ app.get(/^(?!\/api).*/, (_req, res) => {
   if (!fs.existsSync(indexHtml)) {
     return res.status(503).send('Frontend no compilado. Revisa el Build Command / postinstall.');
   }
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(indexHtml);
 });
 
