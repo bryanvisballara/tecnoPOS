@@ -470,12 +470,53 @@ router.patch('/quick/menu-item/:id', async (req, res) => {
   res.json(populated);
 });
 
+const DEFAULT_ZONES = ['Salón', 'Terraza', 'VIP'];
+
+router.post('/quick/zone', async (req, res) => {
+  const restaurantId = restaurantScope(req) || req.body.restaurantId;
+  const name = String(req.body.name || '').trim();
+  if (!restaurantId) return res.status(400).json({ error: 'Restaurante requerido' });
+  if (!name) return res.status(400).json({ error: 'Nombre de zona requerido' });
+
+  const restaurant = await Restaurant.findOne({
+    _id: restaurantId,
+    organizationId: req.user.organizationId,
+  });
+  if (!restaurant) return res.status(404).json({ error: 'Restaurante no encontrado' });
+
+  const zones = Array.isArray(restaurant.zones) && restaurant.zones.length
+    ? [...restaurant.zones]
+    : [...DEFAULT_ZONES];
+  const exists = zones.some((z) => z.toLowerCase() === name.toLowerCase());
+  if (!exists) zones.push(name);
+  restaurant.zones = zones;
+  await restaurant.save();
+  res.status(201).json({ ok: true, zone: name, zones: restaurant.zones });
+});
+
 router.post('/quick/tables', async (req, res) => {
   const restaurantId = restaurantScope(req);
   if (!restaurantId) return res.status(400).json({ error: 'Restaurante requerido' });
 
   const count = Math.min(Math.max(Number(req.body.count) || 1, 1), 40);
+  const zoneName = String(req.body.zone || 'Salón').trim() || 'Salón';
   const existing = await Table.countDocuments({ restaurantId });
+
+  // Ensure zone is registered on the restaurant
+  const restaurant = await Restaurant.findOne({
+    _id: restaurantId,
+    organizationId: req.user.organizationId,
+  });
+  if (restaurant) {
+    const zones = Array.isArray(restaurant.zones) && restaurant.zones.length
+      ? [...restaurant.zones]
+      : [...DEFAULT_ZONES];
+    if (!zones.some((z) => z.toLowerCase() === zoneName.toLowerCase())) {
+      zones.push(zoneName);
+      restaurant.zones = zones;
+      await restaurant.save();
+    }
+  }
 
   const tables = [];
   for (let i = 0; i < count; i++) {
@@ -487,7 +528,7 @@ router.post('/quick/tables', async (req, res) => {
       restaurantId,
       name: req.body.name || `M${n + 1}`,
       seats: Number(req.body.seats) || 4,
-      zone: req.body.zone || (row === 0 ? 'Salón' : row === 1 ? 'Terraza' : 'VIP'),
+      zone: zoneName,
       x: 60 + col * 140,
       y: 60 + row * 160,
       width: 90,

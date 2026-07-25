@@ -9,6 +9,7 @@ import { operatingLineAmount, sumOperatingCosts, totalDishCost } from '../utils/
 const UNITS = ['kg', 'g', 'L', 'ml', 'unidad', 'porcion'];
 const CAT_COLORS = ['#00a8ff', '#38bdf8', '#67e8f9', '#22d3ee', '#a3e635', '#c4b5fd', '#fbbf24', '#fb7185'];
 const OP_COST_SUGGESTIONS = ['Nómina', 'Servicios', 'Merma', 'Empaque', 'Delivery', 'Arriendo'];
+const DEFAULT_ZONES = ['Salón', 'Terraza', 'VIP'];
 const STAFF_ROLES = [
   { value: 'waiter', label: 'Mesero' },
   { value: 'cashier', label: 'Caja' },
@@ -20,6 +21,7 @@ const ROLE_LABEL = Object.fromEntries(STAFF_ROLES.map((r) => [r.value, r.label])
 export default function Onboarding() {
   const { user, restaurantId, restaurants, applySession, loading } = useAuth();
   const navigate = useNavigate();
+  const currentRestaurant = restaurants.find((r) => r._id === restaurantId);
   const [status, setStatus] = useState(null);
   const [stepId, setStepId] = useState('ingredients');
   const [error, setError] = useState('');
@@ -59,6 +61,7 @@ export default function Onboarding() {
   const [editingOpKey, setEditingOpKey] = useState(null);
   const [operatingEditDraft, setOperatingEditDraft] = useState({ name: '', mode: 'fixed', value: '' });
   const [tableForm, setTableForm] = useState({ name: '', seats: '4', zone: 'Salón', count: '1' });
+  const [zoneDraft, setZoneDraft] = useState('');
   const [staffForm, setStaffForm] = useState({ name: '', email: '', password: '', role: 'waiter' });
   const [restoForm, setRestoForm] = useState({ name: '', city: '', address: '' });
 
@@ -118,6 +121,18 @@ export default function Onboarding() {
     () => Object.fromEntries(ingredients.map((i) => [String(i._id), i])),
     [ingredients]
   );
+  const zoneOptions = useMemo(() => {
+    const fromRestaurant = currentRestaurant?.zones || [];
+    const fromTables = tables.map((t) => t.zone).filter(Boolean);
+    const all = [...DEFAULT_ZONES, ...fromRestaurant, ...fromTables];
+    const seen = new Set();
+    return all.filter((z) => {
+      const key = String(z).trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [currentRestaurant, tables]);
   const recipeDraftIng = ingredientsById[String(recipeDraft.ingredientId)];
   const recipeDraftUnits = compatibleUnits(recipeDraftIng?.unit || recipeDraft.unit);
   const recipePreview = useMemo(() => {
@@ -598,8 +613,32 @@ export default function Onboarding() {
           zone: tableForm.zone,
         },
       });
-      setTableForm({ name: '', seats: '4', zone: 'Salón', count: '1' });
-      await afterMutation();
+      setTableForm((f) => ({ name: '', seats: '4', zone: f.zone || 'Salón', count: '1' }));
+      await afterMutation(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addZone = async () => {
+    const name = zoneDraft.trim();
+    if (!name) {
+      setError('Escribe el nombre de la zona.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api('/api/onboarding/quick/zone', {
+        method: 'POST',
+        restaurantId,
+        body: { restaurantId, name },
+      });
+      setZoneDraft('');
+      setTableForm((f) => ({ ...f, zone: name }));
+      await afterMutation(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -791,7 +830,7 @@ export default function Onboarding() {
 
         <section className="panel onboarding-main">
           <h2 style={{ marginTop: 0 }}>{current?.title}</h2>
-          <p className="muted" style={{ fontSize: '0.75rem' }}>Build edit-dish-v6</p>
+          <p className="muted" style={{ fontSize: '0.75rem' }}>Build zones-v7</p>
           <p className="muted">{current?.description}</p>
           {current?.done && <div className="badge ok" style={{ marginBottom: '0.75rem' }}>Paso completado ({current.count})</div>}
           {error && <div className="error">{error}</div>}
@@ -1493,20 +1532,39 @@ export default function Onboarding() {
                   <label style={{ flex: 1 }}>Nombre (opcional)<input value={tableForm.name} onChange={(e) => setTableForm({ ...tableForm, name: e.target.value })} placeholder="M1" /></label>
                   <label style={{ flex: 1 }}>Sillas<input type="number" min="1" value={tableForm.seats} onChange={(e) => setTableForm({ ...tableForm, seats: e.target.value })} /></label>
                 </div>
-                <div className="row">
-                  <label style={{ flex: 1 }}>Zona
+                <div className="row" style={{ alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <label style={{ flex: 1, minWidth: 160 }}>
+                    Zona
                     <select value={tableForm.zone} onChange={(e) => setTableForm({ ...tableForm, zone: e.target.value })}>
-                      <option>Salón</option>
-                      <option>Terraza</option>
-                      <option>VIP</option>
+                      {zoneOptions.map((z) => (
+                        <option key={z} value={z}>{z}</option>
+                      ))}
                     </select>
                   </label>
-                  <label style={{ flex: 1 }}>Cantidad a crear
+                  <label style={{ flex: 1, minWidth: 160 }}>
+                    Nueva zona
+                    <input
+                      value={zoneDraft}
+                      onChange={(e) => setZoneDraft(e.target.value)}
+                      placeholder="Ej. Barra, Patio, Segundo piso…"
+                      disabled={busy}
+                    />
+                  </label>
+                  <button type="button" className="ghost" disabled={busy} onClick={addZone}>
+                    Agregar zona
+                  </button>
+                  <label style={{ flex: 1, minWidth: 120 }}>
+                    Cantidad a crear
                     <input type="number" min="1" max="40" value={tableForm.count} onChange={(e) => setTableForm({ ...tableForm, count: e.target.value })} />
                   </label>
                 </div>
                 <button disabled={busy}>{busy ? 'Creando…' : 'Agregar mesa(s)'}</button>
               </form>
+              {zoneOptions.length > 0 && (
+                <p className="muted" style={{ margin: 0 }}>
+                  Zonas disponibles: {zoneOptions.join(' · ')}
+                </p>
+              )}
               <div>
                 <h3 style={{ margin: '0.5rem 0' }}>Mesas creadas ({tables.length})</h3>
                 {!tables.length ? <p className="muted">Aún no has creado mesas.</p> : (
@@ -1520,9 +1578,9 @@ export default function Onboarding() {
                               <td><input value={tableEditDraft.name} onChange={(e) => setTableEditDraft({ ...tableEditDraft, name: e.target.value })} /></td>
                               <td>
                                 <select value={tableEditDraft.zone} onChange={(e) => setTableEditDraft({ ...tableEditDraft, zone: e.target.value })}>
-                                  <option>Salón</option>
-                                  <option>Terraza</option>
-                                  <option>VIP</option>
+                                  {[...new Set([...zoneOptions, tableEditDraft.zone].filter(Boolean))].map((z) => (
+                                    <option key={z} value={z}>{z}</option>
+                                  ))}
                                 </select>
                               </td>
                               <td><input type="number" min="1" value={tableEditDraft.seats} onChange={(e) => setTableEditDraft({ ...tableEditDraft, seats: e.target.value })} /></td>

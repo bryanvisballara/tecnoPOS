@@ -10,6 +10,10 @@ const restaurantSchema = new mongoose.Schema(
     phone: String,
     openHours: String,
     active: { type: Boolean, default: true },
+    zones: {
+      type: [String],
+      default: () => ['Salón', 'Terraza', 'VIP'],
+    },
     floorPlan: {
       width: { type: Number, default: 1000 },
       height: { type: Number, default: 700 },
